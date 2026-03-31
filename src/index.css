@@ -24,3 +24,166 @@
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+@keyframes sigflo-entry-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.22);
+  }
+  50% {
+    opacity: 0.92;
+    transform: scale(1.03);
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.34);
+  }
+}
+
+.animate-entry-pulse {
+  animation: sigflo-entry-pulse 2.2s ease-in-out infinite;
+  display: inline-block;
+  will-change: transform, opacity;
+}
+
+@keyframes sigflo-trigger-card-in {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-2px) scale(1.01);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sigflo-trigger-border-pulse {
+  0% {
+    box-shadow: 0 8px 20px -18px rgba(0, 255, 200, 0.35);
+  }
+  45% {
+    box-shadow: 0 0 0 2px rgba(0, 255, 200, 0.22), 0 18px 42px -20px rgba(0, 255, 200, 0.78);
+  }
+  100% {
+    box-shadow: 0 12px 28px -18px rgba(0, 255, 200, 0.46);
+  }
+}
+
+@keyframes sigflo-trigger-dot-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  55% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes sigflo-trigger-dot-idle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+@keyframes sigflo-trigger-dot-halo {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.42;
+  }
+  100% {
+    transform: scale(2.15);
+    opacity: 0;
+  }
+}
+
+@keyframes sigflo-trigger-entry-on {
+  0% {
+    filter: brightness(1);
+    text-shadow: none;
+  }
+  100% {
+    filter: brightness(1.12);
+    text-shadow: 0 0 10px rgba(0, 255, 200, 0.25);
+  }
+}
+
+@keyframes sigflo-trigger-entry-shimmer {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.22;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sigflo-trigger-card-rest {
+  border-color: rgba(0, 255, 200, 0.5);
+  box-shadow: 0 12px 28px -18px rgba(0, 255, 200, 0.46);
+}
+
+.sigflo-trigger-card-just {
+  animation:
+    sigflo-trigger-card-in 220ms ease-out,
+    sigflo-trigger-border-pulse 700ms ease-out;
+}
+
+.sigflo-trigger-card-rest:active {
+  transform: scale(0.985);
+  box-shadow: 0 0 0 2px rgba(0, 255, 200, 0.25), 0 16px 34px -16px rgba(0, 255, 200, 0.72);
+}
+
+.sigflo-trigger-dot {
+  animation: sigflo-trigger-dot-idle 1800ms ease-in-out infinite;
+  will-change: transform;
+}
+
+.sigflo-trigger-dot-just {
+  animation: sigflo-trigger-dot-pop 180ms ease-out;
+}
+
+.sigflo-trigger-dot-halo {
+  animation: sigflo-trigger-dot-halo 500ms ease-out forwards;
+}
+
+.sigflo-trigger-entry-active {
+  animation: sigflo-trigger-entry-on 250ms ease-out forwards;
+}
+
+.sigflo-trigger-entry-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.sigflo-trigger-entry-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: -10% -30%;
+  background: linear-gradient(110deg, transparent 38%, rgba(0, 255, 200, 0.26) 50%, transparent 62%);
+  pointer-events: none;
+  animation: sigflo-trigger-entry-shimmer 500ms ease-out 1;
+}

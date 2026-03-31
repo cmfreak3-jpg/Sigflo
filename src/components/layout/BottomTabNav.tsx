@@ -19,7 +19,7 @@ export function BottomTabNav() {
           <NavLink
             key={to}
             to={to}
-            end
+            end={to !== '/bots'}
             className={({ isActive }) =>
               `group flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 transition-colors ${
                 isActive ? 'text-sigflo-accent' : 'text-sigflo-muted hover:text-sigflo-text'

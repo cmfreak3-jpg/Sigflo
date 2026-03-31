@@ -3,6 +3,11 @@ import { fetchKlines } from '@/services/bybit/client';
 import type { Candle } from '@/types/market';
 
 type CandleMap = Record<string, Candle[]>;
+type UseFeedMiniChartsOptions = {
+  fastPairs?: string[];
+  refreshMs?: number;
+  fastRefreshMs?: number;
+};
 
 const CACHE_TTL_MS = 90_000;
 const cache = new Map<string, { candles: Candle[]; fetchedAt: number }>();
@@ -11,10 +16,17 @@ function pairToLinearSymbol(pair: string): string {
   return `${pair.replace(/USDT$/i, '').toUpperCase()}USDT`;
 }
 
-export function useFeedMiniCharts(pairs: string[]): CandleMap {
+export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOptions): CandleMap {
   const [rows, setRows] = useState<CandleMap>({});
   const activePairs = useMemo(() => [...new Set(pairs.map((p) => p.toUpperCase()))], [pairs]);
+  const fastPairSet = useMemo(
+    () => new Set((options?.fastPairs ?? []).map((p) => p.toUpperCase())),
+    [options?.fastPairs],
+  );
   const activeKey = useMemo(() => activePairs.join('|'), [activePairs]);
+  const fastKey = useMemo(() => [...fastPairSet].sort().join('|'), [fastPairSet]);
+  const refreshMs = options?.refreshMs ?? 30_000;
+  const fastRefreshMs = options?.fastRefreshMs ?? 10_000;
   const requestRef = useRef(0);
 
   useEffect(() => {
@@ -33,7 +45,8 @@ export function useFeedMiniCharts(pairs: string[]): CandleMap {
 
       for (const pair of activePairs) {
         const hit = cache.get(pair);
-        if (hit && now - hit.fetchedAt <= CACHE_TTL_MS) next[pair] = hit.candles;
+        const ttl = fastPairSet.has(pair) ? Math.min(CACHE_TTL_MS, fastRefreshMs + 1500) : CACHE_TTL_MS;
+        if (hit && now - hit.fetchedAt <= ttl) next[pair] = hit.candles;
         else misses.push(pair);
       }
 
@@ -65,14 +78,15 @@ export function useFeedMiniCharts(pairs: string[]): CandleMap {
     }
 
     void load();
+    const pollEveryMs = fastPairSet.size > 0 ? Math.min(refreshMs, fastRefreshMs) : refreshMs;
     const t = window.setInterval(() => {
       void load();
-    }, 30_000);
+    }, pollEveryMs);
     return () => {
       cancelled = true;
       window.clearInterval(t);
     };
-  }, [activeKey]);
+  }, [activeKey, fastKey, refreshMs, fastRefreshMs]);
 
   return rows;
 }

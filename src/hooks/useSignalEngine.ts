@@ -107,7 +107,8 @@ export function useSignalEngine(): SignalEngineState {
       setState({
         signals: ranked.length > 0 ? ranked : mockSignals,
         loading: false,
-        mode: ranked.length > 0 ? mode : 'MOCK',
+        // Reflect transport/data source truth even when no setups are currently emitted.
+        mode,
         connection,
         error,
       });

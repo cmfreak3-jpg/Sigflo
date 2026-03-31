@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { SignalCard } from '@/components/feed/SignalCard';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
@@ -15,8 +15,21 @@ const filterChips: { id: FeedFilter; label: string }[] = [
 ];
 
 export function FeedScreen() {
-  const [filter, setFilter] = useState<FeedFilter>('all');
+  const [searchParams] = useSearchParams();
+  const queryFilter = searchParams.get('filter');
+  const initialFilter: FeedFilter =
+    queryFilter === 'strong' || queryFilter === 'actionable' || queryFilter === 'risky' || queryFilter === 'all'
+      ? queryFilter
+      : 'all';
+  const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const { signals: liveSignals, loading, mode, connection } = useSignalEngine();
+
+  useEffect(() => {
+    const next = searchParams.get('filter');
+    if (next === 'strong' || next === 'actionable' || next === 'risky' || next === 'all') {
+      setFilter(next);
+    }
+  }, [searchParams]);
 
   const signals = useMemo(() => {
     if (filter === 'strong') return liveSignals.filter((s) => s.setupScore >= 70);
@@ -51,6 +64,22 @@ export function FeedScreen() {
             <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
               <span>{loading ? 'Syncing' : mode} · {liveSignals.length} setups</span>
+            </div>
+            <div className="mt-1 inline-flex items-center gap-2 text-[10px] font-medium text-sigflo-muted">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                Forming
+              </span>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/95" />
+                In Play
+              </span>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1 text-[#b2fff0] drop-shadow-[0_0_8px_rgba(0,255,200,0.35)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#00ffc8] shadow-[0_0_8px_rgba(0,255,200,0.75)]" />
+                Triggered
+              </span>
             </div>
           </div>
           {import.meta.env.DEV ? (

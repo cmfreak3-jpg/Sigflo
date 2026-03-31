@@ -5,7 +5,10 @@ import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { SplashScreen } from '@/components/layout/SplashScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
 import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
+import BotDetailScreen from '@/screens/BotDetailScreen';
+import BotsScreen from '@/screens/BotsScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
+import PortfolioScreen from '@/screens/PortfolioScreen';
 import { PlaceholderScreen } from '@/screens/PlaceholderScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
@@ -19,6 +22,10 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname, location.search]);
+
   if (isLoading) return <SplashScreen />;
 
   return (
@@ -28,11 +35,9 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route path="/feed" element={<FeedScreen />} />
         <Route path="/markets" element={<MarketsScreen />} />
-        <Route path="/bots" element={<PlaceholderScreen title="Bots" subtitle="Automation and guardrails — mock shell." />} />
-        <Route
-          path="/portfolio"
-          element={<PlaceholderScreen title="Portfolio" subtitle="Balances and PnL — mock shell." />}
-        />
+        <Route path="/bots" element={<BotsScreen />} />
+        <Route path="/bots/:botId" element={<BotDetailScreen />} />
+        <Route path="/portfolio" element={<PortfolioScreen />} />
         <Route path="/profile" element={<PlaceholderScreen title="Profile" subtitle="Account and preferences — mock shell." />} />
         {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
         {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}

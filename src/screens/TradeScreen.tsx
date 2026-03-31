@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LiveBadge } from '@/components/ui/LiveBadge';
 import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
 import { getMockTradeForPair, getMockTradeForSignalId } from '@/data/mockTrade';
 import { mockSignals } from '@/data/mockSignals';
@@ -13,6 +12,7 @@ import { TradeSummaryCard } from '@/components/trade/TradeSummaryCard';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { deriveMarketStatus, parseMarketStatusQuery } from '@/lib/marketScannerRows';
+import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { deriveTradeMetrics } from '@/lib/tradeRisk';
 import type { CryptoSignal, SetupScoreLabel, SignalRiskTag, SignalSetupTag } from '@/types/signal';
 import type { MarketMode, TradeSide } from '@/types/trade';
@@ -30,6 +30,11 @@ export function TradeScreen() {
   const [amountUsd, setAmountUsd] = useState<number>(1200);
   const [leverage, setLeverage] = useState<number>(8);
   const [side, setSide] = useState<TradeSide>('long');
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((v) => v + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const pairFromQuery = params.get('pair');
   const model = useMemo(() => {
@@ -47,7 +52,13 @@ export function TradeScreen() {
     () => parseMarketStatusQuery(params.get('marketStatus')) ?? deriveMarketStatus(selectedSignal),
     [params, selectedSignal],
   );
-  const isTriggered = scannerStatus === 'triggered';
+  const uiState = uiSignalStateFromMarketStatus(scannerStatus);
+  const uiStateStyle = uiSignalStateClasses(uiState);
+  const isTriggered = uiState === 'triggered';
+  const stateAgeLabel = useMemo(
+    () => formatElapsedAgo(postedAgoToSeconds(selectedSignal.postedAgo) + tick),
+    [selectedSignal.postedAgo, tick],
+  );
 
   const liveSymbol = useMemo(() => pairBaseToLinearSymbol(selectedSignal.pair), [selectedSignal.pair]);
   const live = useLiveTradeMarket(liveSymbol, chartInterval);
@@ -68,11 +79,18 @@ export function TradeScreen() {
     () => deriveTradeMetrics(mergedModel, { amountUsd, leverage, side, market, setupScore: selectedSignal.setupScore }),
     [amountUsd, leverage, market, mergedModel, selectedSignal.setupScore, side],
   );
+  const liveUnrealized = useMemo(() => {
+    const entry = Math.max(0.000001, mergedModel.entry);
+    const dir = side === 'long' ? 1 : -1;
+    const movePct = ((mergedModel.lastPrice - entry) / entry) * 100 * dir;
+    const pnlUsd = metrics.positionSizeUsd * (movePct / 100);
+    return { pnlUsd, movePct };
+  }, [mergedModel.entry, mergedModel.lastPrice, metrics.positionSizeUsd, side]);
 
   const ctaLabel = market === 'spot' ? (side === 'long' ? 'Buy' : 'Sell') : side === 'long' ? 'Enter Long' : 'Enter Short';
   const ctaSub = `${side === 'long' ? '-' : '-'}$${Math.round(Math.abs(metrics.stopLossUsd)).toLocaleString()} / +$${Math.round(Math.abs(metrics.targetProfitUsd)).toLocaleString()}`;
   const ctaClass =
-    market === 'spot' && side === 'short'
+    side === 'short'
       ? 'bg-rose-500 text-white hover:bg-rose-400'
       : 'bg-sigflo-accent text-sigflo-bg hover:brightness-110';
 
@@ -101,16 +119,31 @@ export function TradeScreen() {
                 </span>
               </div>
             </div>
-            {isTriggered ? <LiveBadge /> : (
-              <span className="text-[11px] text-sigflo-muted">{live.mode} · {live.connection}</span>
-            )}
+            <div className={`text-[11px] font-semibold ${uiStateStyle.text}`}>
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`relative flex ${uiState === 'triggered' ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>
+                  {uiStateStyle.pulse ? (
+                    <>
+                      <span className="absolute inset-[-4px] rounded-full bg-[#00ffc8]/22 blur-[2px]" />
+                      <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${uiStateStyle.dot} [animation-duration:2.8s]`} />
+                    </>
+                  ) : null}
+                  <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
+                </span>
+                <span className={uiState === 'triggered' ? 'uppercase tracking-[0.11em] text-[#b2ffef] drop-shadow-[0_0_8px_rgba(0,255,200,0.45)]' : ''}>
+                  {uiSignalStateLabel(uiState)}
+                </span>
+                {isTriggered ? <span className="text-sigflo-muted">· {stateAgeLabel}</span> : null}
+              </span>
+              {!isTriggered ? <p className="mt-0.5 text-right text-[10px] text-sigflo-muted">{live.mode} · {live.connection}</p> : null}
+            </div>
           </div>
         </header>
 
         <div className="space-y-3">
           <MarketToggle value={market} onChange={setMarket} />
-          <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex min-w-max items-center gap-3 pr-1">
+          <div className="overflow-x-auto px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex min-w-max items-center gap-4 pr-2">
               <MarketStatsRow model={mergedModel} />
               <div className="flex shrink-0 items-center gap-1.5">
                 {([
@@ -146,6 +179,23 @@ export function TradeScreen() {
             liveUpdatedAt={live.lastUpdateTs}
           />
 
+          <TradeSummaryCard
+            market={market}
+            model={{
+              balanceUsd: metrics.balanceUsd,
+              amountUsedUsd: metrics.amountUsedUsd,
+              walletUsedPct: metrics.walletUsedPct,
+              leverage: metrics.leverage,
+              positionSizeUsd: metrics.positionSizeUsd,
+              livePnlUsd: liveUnrealized.pnlUsd,
+              livePnlPct: liveUnrealized.movePct,
+              targetProfitUsd: metrics.targetProfitUsd,
+              stopLossUsd: metrics.stopLossUsd,
+              liquidation: metrics.liquidation,
+              riskReward: mergedModel.riskReward,
+            }}
+          />
+
           <ScannerInsightCard signal={selectedSignal} status={scannerStatus} tradeScore={metrics.riskSummary.tradeScore} />
 
           <OrderInputsCard
@@ -160,20 +210,6 @@ export function TradeScreen() {
             onAmountChange={setAmountUsd}
             onLeverageChange={setLeverage}
             onSideChange={setSide}
-          />
-
-          <TradeSummaryCard
-            market={market}
-            model={{
-              balanceUsd: metrics.balanceUsd,
-              amountUsedUsd: metrics.amountUsedUsd,
-              leverage: metrics.leverage,
-              positionSizeUsd: metrics.positionSizeUsd,
-              targetProfitUsd: metrics.targetProfitUsd,
-              stopLossUsd: metrics.stopLossUsd,
-              liquidation: metrics.liquidation,
-              riskReward: mergedModel.riskReward,
-            }}
           />
 
           <PreTradeWarningCard

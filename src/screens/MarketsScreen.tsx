@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MarketCard } from '@/components/markets/MarketCard';
+import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useMarketsScanner } from '@/hooks/useMarketsScanner';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
+import type { MarketScannerRow } from '@/types/markets';
 
 type MarketsTab = 'tracked' | 'movers';
 
@@ -14,9 +16,48 @@ const tabs: { id: MarketsTab; label: string }[] = [
 export default function MarketsScreen() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<MarketsTab>('tracked');
+  const [lockingSymbol, setLockingSymbol] = useState<string | null>(null);
   const { trackedRows, moverRows, mode, connection, tickersLoading } = useMarketsScanner();
+  const navigateWithTransition = (to: string) => {
+    const w = window as Window & { startViewTransition?: (cb: () => void) => void };
+    if (typeof w.startViewTransition === 'function') {
+      w.startViewTransition(() => navigate(to));
+      return;
+    }
+    navigate(to);
+  };
+
+  const openRow = (row: MarketScannerRow) => {
+    const query = buildTradeQueryString(row.signal, { marketStatus: row.status });
+    if (row.status === 'triggered') {
+      setLockingSymbol(row.symbol);
+      window.setTimeout(() => navigateWithTransition(`/bots?${query}`), 190);
+      return;
+    }
+    navigateWithTransition(`/trade?${query}`);
+  };
+
 
   const rows = tab === 'tracked' ? trackedRows : moverRows;
+  const primaryTriggeredSymbol = useMemo(() => {
+    const triggered = rows.filter((r) => r.status === 'triggered');
+    if (triggered.length === 0) return null;
+    const sorted = [...triggered].sort((a, b) => (b.triggeredAtMs ?? 0) - (a.triggeredAtMs ?? 0));
+    return sorted[0]?.symbol ?? null;
+  }, [rows]);
+  const triggeredNowCount = useMemo(() => {
+    const seen = new Set<string>();
+    for (const row of [...trackedRows, ...moverRows]) {
+      if (row.status !== 'triggered') continue;
+      seen.add(row.symbol);
+    }
+    return seen.size;
+  }, [moverRows, trackedRows]);
+  const fastPairs = useMemo(
+    () => rows.filter((r) => r.status === 'triggered').map((r) => r.pair),
+    [rows],
+  );
+  const miniCharts = useFeedMiniCharts(rows.map((r) => r.pair), { fastPairs, fastRefreshMs: 8_000 });
   const statusDot =
     connection === 'connected'
       ? 'bg-sigflo-accent'
@@ -33,6 +74,35 @@ export default function MarketsScreen() {
           <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
             <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
             <span>{mode} · {rows.length} pairs{tickersLoading ? ' · loading…' : ''}</span>
+          </div>
+          <div className="mt-1 inline-flex items-center gap-2 text-[10px] font-medium text-sigflo-muted">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+              Forming
+            </span>
+            <span>·</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/95" />
+              In Play
+            </span>
+            <span>·</span>
+            <span className="inline-flex items-center gap-1 text-[#b2fff0] drop-shadow-[0_0_8px_rgba(0,255,200,0.35)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00ffc8] shadow-[0_0_8px_rgba(0,255,200,0.75)]" />
+              Triggered
+            </span>
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => navigate('/feed')}
+              className="inline-flex items-center gap-2 rounded-lg border border-sigflo-accent/26 bg-sigflo-accent/10 px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
+              </span>
+              {triggeredNowCount} signal{triggeredNowCount === 1 ? '' : 's'} triggered now
+            </button>
           </div>
         </header>
 
@@ -70,7 +140,11 @@ export default function MarketsScreen() {
             <MarketCard
               key={`${tab}-${row.symbol}`}
               row={row}
-              onOpen={() => navigate(`/trade?${buildTradeQueryString(row.signal, { marketStatus: row.status })}`)}
+              isPrimaryTriggered={row.symbol === primaryTriggeredSymbol}
+              isDimmed={lockingSymbol != null && lockingSymbol !== row.symbol}
+              isLocking={lockingSymbol === row.symbol}
+              miniCandles={miniCharts[row.pair.toUpperCase()]}
+              onOpen={() => openRow(row)}
             />
           ))}
         </div>

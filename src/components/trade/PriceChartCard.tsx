@@ -247,6 +247,11 @@ export function PriceChartCard({
         time: (Math.floor(Date.now() / 1000) - (model.priceSeries.length - i) * 60) as Time,
         value: base * (0.985 + v * 0.03),
       }));
+      const lineIsUp =
+        series.length >= 2 ? series[series.length - 1].value >= series[0].value : model.lastPrice >= prevPriceRef.current;
+      lineSeries.applyOptions({
+        color: lineIsUp ? '#34d399' : '#fb7185',
+      });
       lineSeries.setData(series);
       candleSeries.setData([]);
       volSeries.setData([]);
