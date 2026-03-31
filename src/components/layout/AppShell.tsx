@@ -6,7 +6,7 @@ export function AppShell() {
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-sigflo-bg">
       <div
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(34,211,238,0.12),transparent)]"
+        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(0,255,200,0.06),transparent)]"
         aria-hidden
       />
       <main className="relative flex-1 pb-[calc(5.25rem+env(safe-area-inset-bottom))]">

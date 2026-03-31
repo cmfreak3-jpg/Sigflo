@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { SigfloLogo } from '@/components/branding/SigfloLogo';
+import { LiveBadge } from '@/components/ui/LiveBadge';
 import { AiInsightCard } from '@/components/trade/AiInsightCard';
 import { SetupContextCard } from '@/components/trade/SetupContextCard';
 import { getMockTradeForPair, getMockTradeForSignalId } from '@/data/mockTrade';
@@ -13,32 +13,10 @@ import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
 import { TradeSummaryCard } from '@/components/trade/TradeSummaryCard';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { formatQuoteNumber } from '@/lib/formatQuote';
-import {
-  deriveMarketStatus,
-  formatTradeScannerStateLine,
-  inPlayMicroHeadline,
-  inPlayStructureConfidence,
-  parseMarketStatusQuery,
-} from '@/lib/marketScannerRows';
-import { setupScoreBandShort } from '@/lib/setupScore';
+import { deriveMarketStatus, parseMarketStatusQuery } from '@/lib/marketScannerRows';
 import { deriveTradeMetrics } from '@/lib/tradeRisk';
 import type { CryptoSignal, SetupScoreLabel, SignalRiskTag, SignalSetupTag } from '@/types/signal';
 import type { MarketMode, TradeSide } from '@/types/trade';
-
-function fmtUsd(n: number, opts?: { signed?: boolean }) {
-  const body = formatQuoteNumber(Math.abs(n));
-  if (opts?.signed && n < 0) return `−$${body}`;
-  if (opts?.signed && n > 0) return `+$${body}`;
-  return `$${body}`;
-}
-
-/** Compact line for primary CTA: `$2,500 • -$506 / +$752` */
-function ctaRiskRewardLine(amountUsd: number, stopLossUsd: number, targetProfitUsd: number) {
-  const amt = `$${Math.round(amountUsd).toLocaleString('en-US')}`;
-  const loss = `-$${Math.round(Math.abs(stopLossUsd)).toLocaleString('en-US')}`;
-  const gain = `+$${Math.round(Math.abs(targetProfitUsd)).toLocaleString('en-US')}`;
-  return `${amt} • ${loss} / ${gain}`;
-}
 
 export function TradeScreen() {
   const navigate = useNavigate();
@@ -56,35 +34,25 @@ export function TradeScreen() {
 
   const pairFromQuery = params.get('pair');
   const model = useMemo(() => {
-    if (pairFromQuery && pairFromQuery.trim().length > 0) {
-      return getMockTradeForPair(pairFromQuery);
-    }
+    if (pairFromQuery && pairFromQuery.trim().length > 0) return getMockTradeForPair(pairFromQuery);
     return getMockTradeForSignalId(signalId);
   }, [pairFromQuery, signalId]);
+
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
     if (fromQuery) return fromQuery;
     return mockSignals.find((s) => s.id === signalId) ?? mockSignals[0];
   }, [params, signalId]);
-  const scannerStatusForHeader = useMemo(() => {
-    return parseMarketStatusQuery(params.get('marketStatus')) ?? deriveMarketStatus(selectedSignal);
-  }, [params, selectedSignal]);
-  const tradeScannerStateLine = useMemo(
-    () => formatTradeScannerStateLine(scannerStatusForHeader, selectedSignal.setupType),
-    [scannerStatusForHeader, selectedSignal.setupType],
+
+  const scannerStatus = useMemo(
+    () => parseMarketStatusQuery(params.get('marketStatus')) ?? deriveMarketStatus(selectedSignal),
+    [params, selectedSignal],
   );
-  const insightActiveHeadline = useMemo(
-    () =>
-      scannerStatusForHeader === 'triggered' ? inPlayMicroHeadline(selectedSignal.setupType) : null,
-    [scannerStatusForHeader, selectedSignal.setupType],
-  );
-  const insightActiveStructure = useMemo(
-    () =>
-      scannerStatusForHeader === 'triggered' ? inPlayStructureConfidence(selectedSignal) : null,
-    [scannerStatusForHeader, selectedSignal],
-  );
+  const isTriggered = scannerStatus === 'triggered';
+
   const liveSymbol = useMemo(() => pairBaseToLinearSymbol(selectedSignal.pair), [selectedSignal.pair]);
   const live = useLiveTradeMarket(liveSymbol, chartInterval);
+
   const mergedModel = useMemo(() => {
     const next = { ...model };
     if (live.lastPrice != null) next.lastPrice = live.lastPrice;
@@ -95,146 +63,94 @@ export function TradeScreen() {
     if (live.priceSeries && live.priceSeries.length > 20) next.priceSeries = live.priceSeries;
     if (live.chartCandles && live.chartCandles.length > 20) next.chartCandles = live.chartCandles;
     return next;
-  }, [live.change24hPct, live.chartCandles, live.high24h, live.lastPrice, live.low24h, live.priceSeries, live.volume24h, model]);
-  const isSpot = market === 'spot';
+  }, [live, model]);
+
   const metrics = useMemo(
     () => deriveTradeMetrics(mergedModel, { amountUsd, leverage, side, market, setupScore: selectedSignal.setupScore }),
     [amountUsd, leverage, market, mergedModel, selectedSignal.setupScore, side],
   );
+
   const aiSummary = useMemo(() => {
-    if (metrics.liquidationRisk === 'High') {
-      return 'Risk is elevated due to leverage and wallet exposure. A smaller size would improve flexibility.';
-    }
-    if (metrics.walletUsedPct > 20) {
-      return 'This trade risks more than your average position size. Consider scaling in rather than committing at once.';
-    }
-    if (mergedModel.change24hPct > 2) {
-      return 'Price is moving into resistance - entries here increase pullback risk. Patience may improve your average.';
-    }
-    return 'Structure is steady and risk remains controlled at this size.';
+    if (metrics.liquidationRisk === 'High') return 'Risk high — lower size';
+    if (metrics.walletUsedPct > 20) return 'Too aggressive — reduce size';
+    if (mergedModel.change24hPct > 2) return 'Watch for pullback risk';
+    return 'Structure steady — risk controlled';
   }, [metrics.liquidationRisk, metrics.walletUsedPct, mergedModel.change24hPct]);
-  const ctaLabel = side === 'long' ? 'Submit Long' : 'Submit Short';
+
+  const ctaLabel = side === 'long' ? 'Enter Long' : 'Enter Short';
+  const ctaSub = `${side === 'long' ? '-' : '-'}$${Math.round(Math.abs(metrics.stopLossUsd)).toLocaleString()} / +$${Math.round(Math.abs(metrics.targetProfitUsd)).toLocaleString()}`;
 
   return (
     <div className="min-h-[100dvh] bg-sigflo-bg pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
       <div className="mx-auto w-full max-w-lg px-4">
+        {/* Header */}
         <header className="mb-4 flex items-center gap-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sigflo-text transition hover:bg-white/[0.08]"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] text-sigflo-muted transition hover:text-white"
             aria-label="Back"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <div className="flex flex-1 items-center justify-between gap-3">
+          <div className="flex flex-1 items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-400/80">Trade</p>
-              <h1 className="text-xl font-semibold tracking-tight text-white">{mergedModel.pair}</h1>
-              <p className="mt-0.5 text-xs text-sigflo-muted">
-                <span className="text-sigflo-text">{fmtUsd(mergedModel.lastPrice)}</span>{' '}
-                <span className={mergedModel.change24hPct >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
-                  {mergedModel.change24hPct >= 0 ? '+' : ''}
-                  {mergedModel.change24hPct.toFixed(2)}%
+              <h1 className="text-xl font-bold tracking-tight text-white">{mergedModel.pair}</h1>
+              <div className="mt-0.5 flex items-center gap-2 text-xs">
+                <span className="font-bold tabular-nums text-white">${formatQuoteNumber(mergedModel.lastPrice)}</span>
+                <span className={mergedModel.change24hPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  {mergedModel.change24hPct >= 0 ? '+' : ''}{mergedModel.change24hPct.toFixed(2)}%
                 </span>
-                <span
-                  className={`ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide ${
-                    live.connection === 'connected'
-                      ? 'text-emerald-200'
-                      : live.connection === 'reconnecting'
-                        ? 'text-amber-200'
-                        : 'text-sigflo-muted'
-                  }`}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      live.connection === 'connected'
-                        ? 'animate-pulse bg-emerald-300'
-                        : live.connection === 'reconnecting'
-                          ? 'animate-pulse bg-amber-300'
-                          : 'bg-slate-500'
-                    }`}
-                  />
-                  {live.connection === 'connected'
-                    ? 'Live'
-                    : live.connection === 'reconnecting'
-                      ? 'Reconnecting'
-                      : 'REST'}
-                </span>
-              </p>
-              <p className="mt-0.5 text-[10px] uppercase tracking-wide text-sigflo-muted">
-                {live.mode} • {live.connection}
-              </p>
+              </div>
             </div>
-            <SigfloLogo size={30} glowing />
+            {isTriggered ? <LiveBadge /> : (
+              <span className="text-[11px] text-sigflo-muted">{live.mode} · {live.connection}</span>
+            )}
           </div>
         </header>
 
-        <section
-          className="mb-4 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/[0.1] via-sigflo-surface/80 to-cyan-500/[0.08] px-4 py-3.5 shadow-[0_0_28px_-8px_rgba(52,211,153,0.25)] ring-1 ring-emerald-400/15"
-          aria-label="Scanner summary"
-        >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-200/85">Scanner</p>
-          <p className="mt-2 text-lg font-semibold tracking-tight text-white">
-            Setup Score: {selectedSignal.setupScore}{' '}
-            <span className="text-emerald-100/95">({setupScoreBandShort(selectedSignal)})</span>
-          </p>
-          <p className="mt-1.5 text-sm font-semibold tracking-tight text-cyan-100">{tradeScannerStateLine}</p>
-        </section>
-
-        <div className="space-y-4">
+        <div className="space-y-3">
           <MarketToggle value={market} onChange={setMarket} />
-          {market === 'spot' && (
-            <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-              Spot mode is preview-only; sizing below assumes futures-style risk display.
-            </p>
-          )}
           <MarketStatsRow model={mergedModel} />
-          <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {(
-              [
-                { value: '5', label: '5m' },
-                { value: '15', label: '15m' },
-                { value: '60', label: '1h' },
-                { value: '240', label: '4h' },
-                { value: 'D', label: '1D' },
-                { value: 'W', label: '1W' },
-              ] as const
-            ).map((intv) => (
+
+          {/* Chart interval selector */}
+          <div className="flex items-center justify-end gap-1.5">
+            {([
+              { value: '5', label: '5m' },
+              { value: '15', label: '15m' },
+              { value: '60', label: '1h' },
+              { value: '240', label: '4h' },
+              { value: 'D', label: '1D' },
+              { value: 'W', label: '1W' },
+            ] as const).map((intv) => (
               <button
                 key={intv.value}
                 type="button"
-                onClick={() => {
-                  setChartInterval(intv.value);
-                  window.localStorage.setItem('sigflo.trade.chartInterval', intv.value);
-                }}
-                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                onClick={() => { setChartInterval(intv.value); window.localStorage.setItem('sigflo.trade.chartInterval', intv.value); }}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                   chartInterval === intv.value
-                    ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-400/40'
-                    : 'border border-white/10 bg-white/[0.03] text-sigflo-muted'
+                    ? 'bg-sigflo-accent/15 text-sigflo-accent ring-1 ring-sigflo-accent/30'
+                    : 'text-sigflo-muted hover:text-sigflo-text'
                 }`}
               >
                 {intv.label}
               </button>
             ))}
           </div>
+
           <PriceChartCard
             model={mergedModel}
             market={market}
-            intervalLabel={
-              chartInterval === 'D' ? '1D' : chartInterval === 'W' ? '1W' : chartInterval === '60' ? '1h' : chartInterval === '240' ? '4h' : `${chartInterval}m`
-            }
+            intervalLabel={chartInterval === 'D' ? '1D' : chartInterval === 'W' ? '1W' : chartInterval === '60' ? '1h' : chartInterval === '240' ? '4h' : `${chartInterval}m`}
             loadingInterval={live.loadingInterval}
             liveUpdatedAt={live.lastUpdateTs}
           />
+
           <SetupContextCard signal={selectedSignal} />
-          <AiInsightCard
-            insight={{ ...model.aiInsight, summary: aiSummary }}
-            activeHeadline={insightActiveHeadline}
-            activeStructureNote={insightActiveStructure}
-          />
+          <AiInsightCard insight={{ ...model.aiInsight, summary: aiSummary }} />
+
           <OrderInputsCard
             balanceUsd={metrics.balanceUsd}
             amountUsd={amountUsd}
@@ -247,6 +163,7 @@ export function TradeScreen() {
             onLeverageChange={setLeverage}
             onSideChange={setSide}
           />
+
           <TradeSummaryCard
             market={market}
             model={{
@@ -260,6 +177,7 @@ export function TradeScreen() {
               riskReward: mergedModel.riskReward,
             }}
           />
+
           <PreTradeWarningCard
             walletUsedPct={metrics.walletUsedPct}
             leverage={metrics.leverage}
@@ -271,14 +189,14 @@ export function TradeScreen() {
             primaryMessage={metrics.riskSummary.primaryMessage}
             warnings={metrics.riskSummary.warnings}
           />
+
+          {/* CTA */}
           <button
             type="button"
-            className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 py-4 text-base font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.995]"
+            className="w-full rounded-2xl bg-sigflo-accent py-4 text-base font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.98]"
           >
-            <span className="block">{isSpot ? (side === 'long' ? 'Buy' : 'Sell') : ctaLabel}</span>
-            <span className="mt-1 block text-sm font-semibold tracking-tight text-sigflo-bg/95">
-              {ctaRiskRewardLine(metrics.amountUsedUsd, metrics.stopLossUsd, metrics.targetProfitUsd)}
-            </span>
+            <span className="block">{ctaLabel}</span>
+            <span className="block text-sm font-semibold text-sigflo-bg/80">{ctaSub}</span>
           </button>
         </div>
       </div>
@@ -286,7 +204,6 @@ export function TradeScreen() {
   );
 }
 
-/** Bybit linear symbol (e.g. BTCUSDT) — never pass display strings like `BTC / USDT`. */
 function pairBaseToLinearSymbol(pair: string): string {
   const raw = pair.trim().toUpperCase();
   const base = raw.includes('/') ? raw.split('/')[0].trim() : raw.replace(/USDT$/i, '').trim();
@@ -305,29 +222,19 @@ function buildSignalContextFromQuery(params: URLSearchParams, signalId: string):
   if (!Number.isFinite(setupScore) || !Number.isFinite(trend) || !Number.isFinite(momentum)) return null;
   if (!Number.isFinite(structure) || !Number.isFinite(volume) || !Number.isFinite(risk) || !pair) return null;
   const tagsRaw = params.get('tags') ?? '';
-  const tags = tagsRaw
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t): t is SignalSetupTag => t === 'Breakout' || t === 'Pullback' || t === 'Overextended');
+  const tags = tagsRaw.split(',').map((t) => t.trim()).filter((t): t is SignalSetupTag => t === 'Breakout' || t === 'Pullback' || t === 'Overextended');
   const setupScoreLabel = (params.get('setupScoreLabel') ?? 'Developing') as SetupScoreLabel;
   const riskTag = (params.get('riskTag') ?? 'Medium Risk') as SignalRiskTag;
-  const side = (params.get('side') ?? 'long') as 'long' | 'short';
+  const sideParam = (params.get('side') ?? 'long') as 'long' | 'short';
   return {
     id: signalId,
     pair,
-    side,
-    biasLabel: params.get('biasLabel') ?? (side === 'long' ? 'Potential Long' : 'Potential Short'),
+    side: sideParam,
+    biasLabel: params.get('biasLabel') ?? (sideParam === 'long' ? 'Potential Long' : 'Potential Short'),
     setupScore,
     setupScoreLabel,
-    setupType:
-      (params.get('setupType') as 'breakout' | 'pullback' | 'overextended' | null) ?? 'breakout',
-    scoreBreakdown: {
-      trendAlignment: trend,
-      momentumQuality: momentum,
-      structureQuality: structure,
-      volumeConfirmation: volume,
-      riskConditions: risk,
-    },
+    setupType: (params.get('setupType') as 'breakout' | 'pullback' | 'overextended' | null) ?? 'breakout',
+    scoreBreakdown: { trendAlignment: trend, momentumQuality: momentum, structureQuality: structure, volumeConfirmation: volume, riskConditions: risk },
     riskTag,
     setupTags: tags,
     exchange: 'Bybit',

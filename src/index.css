@@ -10,27 +10,6 @@
     @apply min-h-[100dvh] antialiased;
   }
   ::selection {
-    @apply bg-cyan-500/30 text-white;
+    @apply bg-[rgba(0,255,200,0.25)] text-white;
   }
-}
-
-/* In-play / live-setup cards: slow breathe, slightly stronger halo — premium dark, not flashy */
-@keyframes sigflo-trigger-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px rgba(134, 239, 172, 0.26),
-      0 0 40px rgba(52, 211, 153, 0.17),
-      0 0 72px rgba(34, 211, 238, 0.075);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px rgba(167, 243, 208, 0.38),
-      0 0 54px rgba(52, 211, 153, 0.26),
-      0 0 96px rgba(34, 211, 238, 0.12);
-  }
-}
-
-.animate-sigflo-trigger {
-  animation: sigflo-trigger-glow 5.75s ease-in-out infinite;
 }
