@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { runScannerDeterminismDemo } from '@/engine/demoRunner';
 import type { ScannerDemoFrame } from '@/engine/demoRunner';
@@ -47,19 +48,55 @@ function PassCard({ frame, title }: { frame: ScannerDemoFrame; title: string }) 
 }
 
 export function EngineDebugScreen() {
-  const demo = useMemo(() => runScannerDeterminismDemo(), []);
+  const navigate = useNavigate();
+  const [rerunTick, setRerunTick] = useState(0);
+  const [lastRerunAt, setLastRerunAt] = useState(() => new Date());
+  const demo = useMemo(() => runScannerDeterminismDemo(), [rerunTick]);
 
   return (
     <div className="space-y-4 pb-6">
       <header>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-sigflo-muted transition hover:bg-white/[0.08] hover:text-white"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Back
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRerunTick((n) => n + 1);
+                setLastRerunAt(new Date());
+              }}
+              className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/15"
+            >
+              Rerun Demo
+            </button>
+            <Link
+              to="/scanner-lab"
+              className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/15"
+            >
+              Open Lab
+            </Link>
+          </div>
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Engine Debug</h1>
         <p className="mt-1 text-sm text-sigflo-muted">
           Deterministic scanner check. Pass 2 should be reduced by cooldown/dedup.
         </p>
+        <p className="mt-1 text-[11px] text-sigflo-muted">
+          Reruns: {rerunTick} · Last run: {lastRerunAt.toLocaleTimeString()}
+        </p>
       </header>
 
-      <PassCard frame={demo.firstPass} title="Pass 1: initial emit" />
-      <PassCard frame={demo.secondPass} title="Pass 2: cooldown and dedup" />
+      <PassCard frame={demo.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
+      <PassCard frame={demo.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
     </div>
   );
 }

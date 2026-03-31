@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SignalCard } from '@/components/feed/SignalCard';
+import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { deriveMarketStatus } from '@/lib/marketScannerRows';
 
-type FeedFilter = 'all' | 'live' | 'strong';
+type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
 const filterChips: { id: FeedFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'live', label: 'Live' },
   { id: 'strong', label: 'Strong+' },
+  { id: 'actionable', label: 'Actionable' },
+  { id: 'risky', label: 'Risky' },
 ];
 
 export function FeedScreen() {
@@ -17,7 +20,17 @@ export function FeedScreen() {
 
   const signals = useMemo(() => {
     if (filter === 'strong') return liveSignals.filter((s) => s.setupScore >= 70);
-    if (filter === 'live') return liveSignals.filter((s) => s.setupScore >= 70);
+    if (filter === 'actionable') {
+      return liveSignals.filter((s) => {
+        const status = deriveMarketStatus(s);
+        if (status === 'overextended') return false;
+        if (status !== 'triggered' && status !== 'developing') return false;
+        return s.setupScore >= 65;
+      });
+    }
+    if (filter === 'risky') {
+      return liveSignals.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
+    }
     return liveSignals;
   }, [filter, liveSignals]);
 
@@ -26,6 +39,7 @@ export function FeedScreen() {
     : connection === 'connected'
       ? 'bg-sigflo-accent'
       : 'bg-slate-500';
+  const miniChartsByPair = useFeedMiniCharts(signals.map((s) => s.pair));
 
   return (
     <div className="pb-6 pt-4">
@@ -43,13 +57,13 @@ export function FeedScreen() {
             <div className="flex items-center gap-2">
               <Link
                 to="/engine-debug"
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-sigflo-muted transition hover:text-sigflo-text"
+                className="inline-flex items-center rounded-lg border border-cyan-500/25 bg-cyan-500/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/85 transition hover:bg-cyan-500/[0.14] hover:text-cyan-100"
               >
                 Debug
               </Link>
               <Link
                 to="/scanner-lab"
-                className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-sigflo-muted transition hover:text-sigflo-text"
+                className="inline-flex items-center rounded-lg border border-violet-500/25 bg-violet-500/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200/85 transition hover:bg-violet-500/[0.14] hover:text-violet-100"
               >
                 Lab
               </Link>
@@ -81,9 +95,9 @@ export function FeedScreen() {
         </div>
 
         {/* Signal cards */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           {signals.map((s) => (
-            <SignalCard key={s.id} signal={s} />
+            <SignalCard key={s.id} signal={s} miniCandles={miniChartsByPair[s.pair.toUpperCase()]} />
           ))}
         </div>
       </section>

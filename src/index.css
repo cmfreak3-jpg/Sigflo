@@ -13,3 +13,14 @@
     @apply bg-[rgba(0,255,200,0.25)] text-white;
   }
 }
+
+.sigflo-number-input::-webkit-outer-spin-button,
+.sigflo-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sigflo-number-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

@@ -54,11 +54,11 @@ export function PriceChartCard({
   const volRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const priceLineByKeyRef = useRef<Partial<Record<LevelKey, ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>>>>({});
   const [visibleLevels, setVisibleLevels] = useState<Record<LevelKey, boolean>>({
-    last: true,
-    entry: true,
-    stop: true,
-    target: true,
-    liquidation: true,
+    last: false,
+    entry: false,
+    stop: false,
+    target: false,
+    liquidation: false,
   });
 
   const visibleLevelKeys = useMemo(
@@ -206,11 +206,10 @@ export function PriceChartCard({
           value: last.volume ?? 0,
           color: last.close >= last.open ? 'rgba(52,211,153,0.30)' : 'rgba(248,113,113,0.30)',
         });
+        chartRef.current?.timeScale().scrollToRealTime();
       } else {
         const chart = chartRef.current;
         const ts = chart?.timeScale();
-        const restoreRange =
-          didFitContentRef.current && ts ? ts.getVisibleLogicalRange() : null;
 
         candleSeries.setData(
           candles.map((c) => ({
@@ -235,16 +234,13 @@ export function PriceChartCard({
         if (!didFitContentRef.current) {
           ts?.fitContent();
           didFitContentRef.current = true;
-        } else if (restoreRange) {
-          ts?.setVisibleLogicalRange(restoreRange);
         }
+        ts?.scrollToRealTime();
       }
     } else {
       candleStructRef.current = null;
       const chart = chartRef.current;
       const ts = chart?.timeScale();
-      const restoreRange =
-        didFitContentRef.current && ts ? ts.getVisibleLogicalRange() : null;
 
       const base = model.lastPrice;
       const series = model.priceSeries.map((v, i) => ({
@@ -257,9 +253,8 @@ export function PriceChartCard({
       if (!didFitContentRef.current) {
         ts?.fitContent();
         didFitContentRef.current = true;
-      } else if (restoreRange) {
-        ts?.setVisibleLogicalRange(restoreRange);
       }
+      ts?.scrollToRealTime();
     }
   }, [intervalLabel, model.chartCandles, model.lastPrice, model.pair, model.priceSeries]);
 

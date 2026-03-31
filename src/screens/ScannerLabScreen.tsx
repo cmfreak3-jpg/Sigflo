@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { breakoutScenario5m, overextendedScenario5m, pullbackScenario5m } from '@/data/mockCandles';
 import {
@@ -62,6 +63,7 @@ function statusFromEvaluation(r: DetectorEvaluation, score: number | null) {
 }
 
 export function ScannerLabScreen() {
+  const navigate = useNavigate();
   const [scenario, setScenario] = useState<ScenarioKey>('breakout');
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedMs, setSpeedMs] = useState(700);
@@ -341,7 +343,19 @@ export function ScannerLabScreen() {
   return (
     <div className="space-y-4 pb-6 pt-4">
       <header className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-400/85">Scanner Lab</p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-sigflo-muted transition hover:bg-white/[0.08] hover:text-white"
+            aria-label="Go back"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-400/85">Scanner Lab</p>
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Playback sandbox</h1>
         <p className="text-sm text-sigflo-muted">Replay crafted scenarios candle-by-candle and inspect detector logic.</p>
       </header>

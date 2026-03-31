@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { AiInsightCard } from '@/components/trade/AiInsightCard';
-import { SetupContextCard } from '@/components/trade/SetupContextCard';
+import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
 import { getMockTradeForPair, getMockTradeForSignalId } from '@/data/mockTrade';
 import { mockSignals } from '@/data/mockSignals';
 import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
@@ -70,15 +69,12 @@ export function TradeScreen() {
     [amountUsd, leverage, market, mergedModel, selectedSignal.setupScore, side],
   );
 
-  const aiSummary = useMemo(() => {
-    if (metrics.liquidationRisk === 'High') return 'Risk high — lower size';
-    if (metrics.walletUsedPct > 20) return 'Too aggressive — reduce size';
-    if (mergedModel.change24hPct > 2) return 'Watch for pullback risk';
-    return 'Structure steady — risk controlled';
-  }, [metrics.liquidationRisk, metrics.walletUsedPct, mergedModel.change24hPct]);
-
-  const ctaLabel = side === 'long' ? 'Enter Long' : 'Enter Short';
+  const ctaLabel = market === 'spot' ? (side === 'long' ? 'Buy' : 'Sell') : side === 'long' ? 'Enter Long' : 'Enter Short';
   const ctaSub = `${side === 'long' ? '-' : '-'}$${Math.round(Math.abs(metrics.stopLossUsd)).toLocaleString()} / +$${Math.round(Math.abs(metrics.targetProfitUsd)).toLocaleString()}`;
+  const ctaClass =
+    market === 'spot' && side === 'short'
+      ? 'bg-rose-500 text-white hover:bg-rose-400'
+      : 'bg-sigflo-accent text-sigflo-bg hover:brightness-110';
 
   return (
     <div className="min-h-[100dvh] bg-sigflo-bg pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -113,31 +109,33 @@ export function TradeScreen() {
 
         <div className="space-y-3">
           <MarketToggle value={market} onChange={setMarket} />
-          <MarketStatsRow model={mergedModel} />
-
-          {/* Chart interval selector */}
-          <div className="flex items-center justify-end gap-1.5">
-            {([
-              { value: '5', label: '5m' },
-              { value: '15', label: '15m' },
-              { value: '60', label: '1h' },
-              { value: '240', label: '4h' },
-              { value: 'D', label: '1D' },
-              { value: 'W', label: '1W' },
-            ] as const).map((intv) => (
-              <button
-                key={intv.value}
-                type="button"
-                onClick={() => { setChartInterval(intv.value); window.localStorage.setItem('sigflo.trade.chartInterval', intv.value); }}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
-                  chartInterval === intv.value
-                    ? 'bg-sigflo-accent/15 text-sigflo-accent ring-1 ring-sigflo-accent/30'
-                    : 'text-sigflo-muted hover:text-sigflo-text'
-                }`}
-              >
-                {intv.label}
-              </button>
-            ))}
+          <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex min-w-max items-center gap-3 pr-1">
+              <MarketStatsRow model={mergedModel} />
+              <div className="flex shrink-0 items-center gap-1.5">
+                {([
+                  { value: '5', label: '5m' },
+                  { value: '15', label: '15m' },
+                  { value: '60', label: '1h' },
+                  { value: '240', label: '4h' },
+                  { value: 'D', label: '1D' },
+                  { value: 'W', label: '1W' },
+                ] as const).map((intv) => (
+                  <button
+                    key={intv.value}
+                    type="button"
+                    onClick={() => { setChartInterval(intv.value); window.localStorage.setItem('sigflo.trade.chartInterval', intv.value); }}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                      chartInterval === intv.value
+                        ? 'bg-sigflo-accent/15 text-sigflo-accent ring-1 ring-sigflo-accent/30'
+                        : 'text-sigflo-muted hover:text-sigflo-text'
+                    }`}
+                  >
+                    {intv.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <PriceChartCard
@@ -148,10 +146,10 @@ export function TradeScreen() {
             liveUpdatedAt={live.lastUpdateTs}
           />
 
-          <SetupContextCard signal={selectedSignal} />
-          <AiInsightCard insight={{ ...model.aiInsight, summary: aiSummary }} />
+          <ScannerInsightCard signal={selectedSignal} status={scannerStatus} tradeScore={metrics.riskSummary.tradeScore} />
 
           <OrderInputsCard
+            market={market}
             balanceUsd={metrics.balanceUsd}
             amountUsd={amountUsd}
             leverage={leverage}
@@ -193,7 +191,7 @@ export function TradeScreen() {
           {/* CTA */}
           <button
             type="button"
-            className="w-full rounded-2xl bg-sigflo-accent py-4 text-base font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.98]"
+            className={`w-full rounded-2xl py-4 text-base font-bold shadow-glow transition active:scale-[0.98] ${ctaClass}`}
           >
             <span className="block">{ctaLabel}</span>
             <span className="block text-sm font-semibold text-sigflo-bg/80">{ctaSub}</span>
