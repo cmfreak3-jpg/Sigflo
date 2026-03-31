@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 
-type PillTone = 'neutral' | 'cyan' | 'green' | 'red';
+type PillTone = 'neutral' | 'cyan' | 'green' | 'red' | 'accent';
 
 const tones: Record<PillTone, string> = {
   neutral: 'border-white/10 bg-white/[0.04] text-sigflo-muted',
-  cyan: 'border-cyan-400/25 bg-sigflo-accentDim text-cyan-200',
+  cyan: 'border-sigflo-accent/25 bg-sigflo-accentDim text-sigflo-accent',
+  accent: 'border-sigflo-accent/25 bg-sigflo-accentDim text-sigflo-accent',
   green: 'border-emerald-400/25 bg-sigflo-profitDim text-emerald-200',
   red: 'border-rose-400/25 bg-sigflo-lossDim text-rose-200',
 };
