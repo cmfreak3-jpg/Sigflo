@@ -16,6 +16,14 @@ export type AssistantResponse = {
   source: 'local' | 'remote';
 };
 
+type OpenAiChatResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+};
+
 function entryState(status: MarketRowStatus, tradeScore: number): 'Too early' | 'Ready' | 'Too late' | 'Too risky' {
   if (status === 'overextended' || tradeScore < 45) return 'Too risky';
   if (status === 'triggered' && tradeScore >= 65) return 'Ready';
@@ -94,28 +102,94 @@ function buildLocalResponse(req: AssistantRequest): AssistantResponse {
   };
 }
 
+function buildPrompt(req: AssistantRequest): { system: string; user: string } {
+  const local = buildLocalResponse(req);
+  const system =
+    'You are a concise crypto setup assistant for Sigflo. Return strict JSON with keys: headline, body. Keep body under 2 short paragraphs. No markdown.';
+  const user = `Action: ${req.action}
+Pair: ${req.signal.pair}
+Side: ${req.signal.side}
+Setup type: ${req.signal.setupType}
+Setup score: ${req.signal.setupScore}
+Trade score: ${req.tradeScore}
+Status: ${req.status}
+Risk: ${req.signal.riskTag}
+Watch cue: ${req.signal.watchCue ?? 'n/a'}
+Watch next: ${req.signal.watchNext ?? 'n/a'}
+
+Reference local style:
+headline: ${local.headline}
+body: ${local.body}`;
+  return { system, user };
+}
+
+function parseJsonObject(text: string): Partial<AssistantResponse> | null {
+  try {
+    const parsed = JSON.parse(text) as Partial<AssistantResponse>;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function coerceRemoteResponse(data: unknown): AssistantResponse | null {
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as Record<string, unknown>;
+  if (typeof raw.headline === 'string' && typeof raw.body === 'string') {
+    return { headline: raw.headline, body: raw.body, source: 'remote' };
+  }
+  const choices = (raw as OpenAiChatResponse).choices;
+  const content = choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || content.trim().length === 0) return null;
+  const asJson = parseJsonObject(content.trim());
+  if (asJson?.headline && asJson?.body) {
+    return { headline: asJson.headline, body: asJson.body, source: 'remote' };
+  }
+  return { headline: 'AI suggestion', body: content.trim(), source: 'remote' };
+}
+
 export async function requestAssistantSuggestion(req: AssistantRequest): Promise<AssistantResponse> {
-  const endpoint = import.meta.env.VITE_AI_ENDPOINT?.trim();
-  const apiKey = import.meta.env.VITE_AI_API_KEY?.trim();
-  if (!endpoint) return buildLocalResponse(req);
+  // Safe default: frontend calls your own backend/proxy endpoint.
+  const proxyEndpoint = import.meta.env.VITE_AI_PROXY_ENDPOINT?.trim() || '/api/ai/suggest';
+  // Temporary testing only: allow direct browser -> OpenAI if explicitly enabled.
+  const allowBrowserOpenAi = import.meta.env.VITE_AI_ALLOW_BROWSER_OPENAI === 'true';
+  const browserOpenAiEndpoint = import.meta.env.VITE_AI_ENDPOINT?.trim();
+  const browserOpenAiKey = import.meta.env.VITE_AI_API_KEY?.trim();
+  const model = import.meta.env.VITE_AI_MODEL?.trim() || 'gpt-4o-mini';
 
   try {
+    const target = allowBrowserOpenAi && browserOpenAiEndpoint ? browserOpenAiEndpoint : proxyEndpoint;
+    const payload =
+      allowBrowserOpenAi && browserOpenAiEndpoint
+        ? (() => {
+            const prompt = buildPrompt(req);
+            return {
+              model,
+              temperature: 0.2,
+              response_format: { type: 'json_object' },
+              messages: [
+                { role: 'system', content: prompt.system },
+                { role: 'user', content: prompt.user },
+              ],
+            };
+          })()
+        : req;
+
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 9000);
-    const res = await fetch(endpoint, {
+    const res = await fetch(target, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(allowBrowserOpenAi && browserOpenAiKey ? { Authorization: `Bearer ${browserOpenAiKey}` } : {}),
       },
-      body: JSON.stringify(req),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
     window.clearTimeout(timeout);
     if (!res.ok) return buildLocalResponse(req);
-    const data = (await res.json()) as Partial<AssistantResponse>;
-    if (!data.headline || !data.body) return buildLocalResponse(req);
-    return { headline: data.headline, body: data.body, source: 'remote' };
+    const data = (await res.json()) as unknown;
+    return coerceRemoteResponse(data) ?? buildLocalResponse(req);
   } catch {
     return buildLocalResponse(req);
   }
