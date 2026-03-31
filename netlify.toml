@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/ai/suggest"
+  to = "/.netlify/functions/ai-suggest"
+  status = 200
