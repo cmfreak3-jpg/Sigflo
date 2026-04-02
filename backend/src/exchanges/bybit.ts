@@ -1,8 +1,17 @@
 import { getJson, signHmacSha256 } from './http.js';
-import type { BalanceItem, ConnectInput, ExchangeAdapter, PermissionCheck, PositionItem, ValidationResult } from './types.js';
+import type {
+  BalanceItem,
+  ClosedTradeItem,
+  ConnectInput,
+  ExchangeAdapter,
+  PermissionCheck,
+  PositionItem,
+  ValidationResult,
+} from './types.js';
 
 const BASE_URL = 'https://api.bybit.com';
-const RECV_WINDOW = '5000';
+/** Bybit allows up to 60_000 ms; larger window absorbs client–server clock skew (NTP drift). */
+const RECV_WINDOW = '60000';
 
 type BybitResponse<T> = {
   retCode: number;
@@ -93,5 +102,25 @@ export class BybitAdapter implements ExchangeAdapter {
         unrealizedPnl: Number(p.unrealisedPnl ?? 0),
       }))
       .filter((p) => p.size > 0);
+  }
+
+  async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {
+    const lim = Math.min(100, Math.max(1, opts?.limit ?? 50));
+    const result = await privateGet<{
+      list?: Array<{ symbol: string; closedPnl: string; updatedTime: string; orderId?: string }>;
+    }>('/v5/position/closed-pnl', { category: 'linear', limit: String(lim) }, input);
+    const rows = result.list ?? [];
+    return rows
+      .map((r) => {
+        const ms = Number(r.updatedTime);
+        const closedAt = Number.isFinite(ms) ? new Date(ms).toISOString() : new Date(0).toISOString();
+        return {
+          symbol: r.symbol,
+          closedPnl: Number(r.closedPnl ?? 0),
+          closedAt,
+          orderId: r.orderId,
+        };
+      })
+      .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
   }
 }

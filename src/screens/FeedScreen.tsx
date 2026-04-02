@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { SignalCard } from '@/components/feed/SignalCard';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import { deriveMarketStatus, isFeedActionableOpportunity } from '@/lib/marketScannerRows';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
@@ -33,14 +33,7 @@ export function FeedScreen() {
 
   const signals = useMemo(() => {
     if (filter === 'strong') return liveSignals.filter((s) => s.setupScore >= 70);
-    if (filter === 'actionable') {
-      return liveSignals.filter((s) => {
-        const status = deriveMarketStatus(s);
-        if (status === 'overextended') return false;
-        if (status !== 'triggered' && status !== 'developing') return false;
-        return s.setupScore >= 65;
-      });
-    }
+    if (filter === 'actionable') return liveSignals.filter(isFeedActionableOpportunity);
     if (filter === 'risky') {
       return liveSignals.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
     }
@@ -63,7 +56,12 @@ export function FeedScreen() {
             <h2 className="text-2xl font-bold tracking-tight text-white">Signals</h2>
             <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
-              <span>{loading ? 'Syncing' : mode} · {liveSignals.length} setups</span>
+              <span>
+                {loading ? 'Syncing' : mode} ·{' '}
+                {filter === 'all'
+                  ? `${liveSignals.length} setups`
+                  : `${signals.length} of ${liveSignals.length} setups`}
+              </span>
             </div>
             <div className="mt-1 inline-flex items-center gap-2 text-[10px] font-medium text-sigflo-muted">
               <span className="inline-flex items-center gap-1">

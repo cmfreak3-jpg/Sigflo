@@ -12,6 +12,7 @@
     "packageJson": {
       "dependencies": [
         "npm:@eslint/js@^9.21.0",
+        "npm:@supabase/supabase-js@^2.57.4",
         "npm:@types/node@^25.5.0",
         "npm:@types/react-dom@^19.0.4",
         "npm:@types/react@^19.0.10",

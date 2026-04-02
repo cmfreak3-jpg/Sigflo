@@ -49,11 +49,27 @@ export default {
           '0%, 100%': { boxShadow: '0 0 0 1px rgba(0,255,200,0.15), 0 0 20px rgba(0,255,200,0.08)' },
           '50%': { boxShadow: '0 0 0 1px rgba(0,255,200,0.30), 0 0 32px rgba(0,255,200,0.15)' },
         },
+        'spark-glow': {
+          '0%, 100%': {
+            opacity: '0.88',
+            filter: 'drop-shadow(0 0 2px rgba(0,255,200,0.12))',
+          },
+          '50%': { opacity: '1', filter: 'drop-shadow(0 0 7px rgba(0,255,200,0.28))' },
+        },
+        /** Slow sheen across winning position cards */
+        'position-shimmer': {
+          '0%': { transform: 'translateX(-120%) skewX(-14deg)', opacity: '0' },
+          '12%': { opacity: '0.14' },
+          '55%': { opacity: '0.06' },
+          '100%': { transform: 'translateX(220%) skewX(-14deg)', opacity: '0' },
+        },
       },
       animation: {
         'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
         'fade-in-up': 'fade-in-up 0.35s ease-out',
         'glow-breathe': 'glow-breathe 4s ease-in-out infinite',
+        'spark-glow': 'spark-glow 5s ease-in-out infinite',
+        'position-shimmer': 'position-shimmer 7.5s ease-in-out infinite',
       },
     },
   },

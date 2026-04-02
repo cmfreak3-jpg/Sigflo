@@ -59,7 +59,10 @@ for (const exchange of exchanges) {
       });
     } catch (error) {
       log('warn', 'Integration connect failed.', { exchange, error: String(error) });
-      res.status(400).json({ error: 'Connection failed. Check key/secret and permissions.' });
+      const fallback = 'Connection failed. Check key/secret and permissions.';
+      const message =
+        error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+      res.status(400).json({ error: message });
     }
   });
 }

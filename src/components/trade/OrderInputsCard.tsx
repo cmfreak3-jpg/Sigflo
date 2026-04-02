@@ -16,10 +16,28 @@ export function OrderInputsCard(props: {
   onAmountChange: (v: number) => void;
   onLeverageChange: (v: number) => void;
   onSideChange: (s: TradeSide) => void;
+  /** When true, Long/Short toggles are hidden (manage open leg). */
+  lockSide?: boolean;
+  /** Card heading (default “Order”). */
+  panelTitle?: string;
+  /** Hide exchange-style liq row (manage mode). */
+  hideLiquidationFooter?: boolean;
 }) {
   const {
-    market, balanceUsd, amountUsd, leverage, side, positionSizeUsd, walletUsedPct,
-    liquidationRisk, onAmountChange, onLeverageChange, onSideChange,
+    market,
+    balanceUsd,
+    amountUsd,
+    leverage,
+    side,
+    positionSizeUsd,
+    walletUsedPct,
+    liquidationRisk,
+    onAmountChange,
+    onLeverageChange,
+    onSideChange,
+    lockSide = false,
+    panelTitle = 'Order',
+    hideLiquidationFooter = false,
   } = props;
   const amountMax = Math.max(0, Math.round(balanceUsd));
 
@@ -28,7 +46,7 @@ export function OrderInputsCard(props: {
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4 space-y-4">
       <div className="flex items-center justify-between text-xs text-sigflo-muted">
-        <span className="font-semibold text-white text-sm">Order</span>
+        <span className="text-sm font-semibold text-white">{panelTitle}</span>
         <span>Balance {money(balanceUsd)}</span>
       </div>
 
@@ -107,32 +125,48 @@ export function OrderInputsCard(props: {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onSideChange('long')}
-          className={`rounded-xl py-2.5 text-sm font-bold transition ${
-            side === 'long' ? 'bg-sigflo-accent text-sigflo-bg' : 'border border-white/[0.08] text-sigflo-text'
-          }`}
-        >
-          {market === 'spot' ? 'Buy' : 'Long'}
-        </button>
-        <button
-          type="button"
-          onClick={() => onSideChange('short')}
-          className={`rounded-xl py-2.5 text-sm font-bold transition ${
-            side === 'short' ? 'bg-rose-500 text-white' : 'border border-white/[0.08] text-sigflo-text'
-          }`}
-        >
-          {market === 'spot' ? 'Sell' : 'Short'}
-        </button>
-      </div>
+      {lockSide ? (
+        <div className="flex justify-center">
+          <span
+            className={`rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider ${
+              side === 'long' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+            }`}
+          >
+            {side === 'long' ? 'LONG' : 'SHORT'} · open leg
+          </span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onSideChange('long')}
+            className={`rounded-xl py-2.5 text-sm font-bold transition ${
+              side === 'long' ? 'bg-sigflo-accent text-sigflo-bg' : 'border border-white/[0.08] text-sigflo-text'
+            }`}
+          >
+            {market === 'spot' ? 'Buy' : 'Open Long'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSideChange('short')}
+            className={`rounded-xl py-2.5 text-sm font-bold transition ${
+              side === 'short' ? 'bg-rose-500 text-white' : 'border border-white/[0.08] text-sigflo-text'
+            }`}
+          >
+            {market === 'spot' ? 'Sell' : 'Open Short'}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-xs">
         <span className="text-sigflo-muted">
           {money(positionSizeUsd)} position · {walletUsedPct.toFixed(1)}% wallet
         </span>
-        <span className={`font-semibold ${riskColor}`}>Liq: {liquidationRisk}</span>
+        {hideLiquidationFooter ? (
+          <span className="text-sigflo-muted">—</span>
+        ) : (
+          <span className={`font-semibold ${riskColor}`}>Liq: {liquidationRisk}</span>
+        )}
       </div>
     </div>
   );

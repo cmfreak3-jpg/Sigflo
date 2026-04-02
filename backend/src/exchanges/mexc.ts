@@ -1,5 +1,13 @@
 import { getJson, signHmacSha256 } from './http.js';
-import type { BalanceItem, ConnectInput, ExchangeAdapter, PermissionCheck, PositionItem, ValidationResult } from './types.js';
+import type {
+  BalanceItem,
+  ClosedTradeItem,
+  ConnectInput,
+  ExchangeAdapter,
+  PermissionCheck,
+  PositionItem,
+  ValidationResult,
+} from './types.js';
 
 const BASE_URL = 'https://api.mexc.com';
 
@@ -63,6 +71,10 @@ export class MexcAdapter implements ExchangeAdapter {
   }
 
   async fetchPositions(): Promise<PositionItem[]> {
+    return [];
+  }
+
+  async fetchClosedTrades(): Promise<ClosedTradeItem[]> {
     return [];
   }
 }

@@ -31,3 +31,12 @@ export type ExchangeSnapshot = {
   balances: BalanceItem[];
   positions: PositionItem[];
 };
+
+/** Closed linear PnL row from `/api/portfolio/closed-trades`. */
+export type ClosedTradeRow = {
+  exchange: ExchangeId;
+  symbol: string;
+  closedPnl: number;
+  closedAt: string;
+  orderId?: string;
+};

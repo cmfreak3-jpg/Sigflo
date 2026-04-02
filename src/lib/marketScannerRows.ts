@@ -193,6 +193,14 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   return 'idle';
 }
 
+/** Same rules as Feed → “Actionable” filter (triggered/developing, score ≥ 65, not overextended). */
+export function isFeedActionableOpportunity(signal: CryptoSignal): boolean {
+  const status = deriveMarketStatus(signal);
+  if (status === 'overextended') return false;
+  if (status !== 'triggered' && status !== 'developing') return false;
+  return signal.setupScore >= 65;
+}
+
 export function buildMarketScannerRows(
   engineSignals: CryptoSignal[],
   tickersBySymbol: Record<string, SymbolTicker>,
