@@ -45,9 +45,7 @@ async function verifySupabaseJwtJwks(token: string): Promise<VerifiedUser | null
     const supabaseUrl = normalizeSupabaseUrl(env.SUPABASE_URL);
     const jwksUrl = new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
     const jwks = createRemoteJWKSet(jwksUrl);
-    const { payload } = await jwtVerify(token, jwks, {
-      algorithms: ['RS256'],
-    });
+    const { payload } = await jwtVerify(token, jwks);
     // Supabase projects can vary claim shapes (iss/aud) across key migration modes.
     // Signature verification is mandatory; issuer check is soft-validated to reduce false 401s.
     const iss = typeof payload.iss === 'string' ? payload.iss : '';
