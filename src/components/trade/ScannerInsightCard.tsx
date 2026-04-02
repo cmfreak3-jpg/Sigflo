@@ -76,7 +76,7 @@ export function ScannerInsightCard({
   status: MarketRowStatus;
   tradeScore: number;
 }) {
-  const [aiResult, setAiResult] = useState<{ headline: string; body: string } | null>(null);
+  const [aiResult, setAiResult] = useState<{ headline: string; body: string; source: 'local' | 'remote' } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const mainRead = readFor(signal, status);
   const watch = watchFor(signal);
@@ -90,21 +90,21 @@ export function ScannerInsightCard({
   const runExplain = async () => {
     setAiLoading(true);
     const result = await requestAssistantSuggestion({ action: 'explain', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body });
+    setAiResult({ headline: result.headline, body: result.body, source: result.source });
     setAiLoading(false);
   };
 
   const runWatch = async () => {
     setAiLoading(true);
     const result = await requestAssistantSuggestion({ action: 'watch', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body });
+    setAiResult({ headline: result.headline, body: result.body, source: result.source });
     setAiLoading(false);
   };
 
   const runEntry = async () => {
     setAiLoading(true);
     const result = await requestAssistantSuggestion({ action: 'entry', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body });
+    setAiResult({ headline: result.headline, body: result.body, source: result.source });
     setAiLoading(false);
   };
 
@@ -172,7 +172,18 @@ export function ScannerInsightCard({
           <p className="mt-2 text-[10px] text-sigflo-muted">Assistant is thinking...</p>
         ) : aiResult ? (
           <div className="mt-2 rounded-md border border-white/[0.05] bg-black/30 p-2">
-            <p className="text-[11px] font-semibold leading-snug text-white/95">{aiResult.headline}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold leading-snug text-white/95">{aiResult.headline}</p>
+              <span
+                className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                  aiResult.source === 'remote'
+                    ? 'border-emerald-400/35 bg-emerald-500/15 text-emerald-200'
+                    : 'border-amber-400/35 bg-amber-500/15 text-amber-200'
+                }`}
+              >
+                {aiResult.source === 'remote' ? 'AI live' : 'Fallback'}
+              </span>
+            </div>
             <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-sigflo-muted">{aiResult.body}</p>
           </div>
         ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
@@ -35,6 +36,7 @@ const closedTradesSeed: ClosedTrade[] = [
 export default function PortfolioScreen() {
   const navigate = useNavigate();
   const { signals } = useSignalEngine();
+  const { items: accountSnapshots, loading: snapshotLoading } = useAccountSnapshot();
   const [tick, setTick] = useState(0);
   const [showClosed, setShowClosed] = useState(false);
   const [displayDailyPnl, setDisplayDailyPnl] = useState(0);
@@ -210,6 +212,35 @@ export default function PortfolioScreen() {
         <p className="text-[11px] text-sigflo-muted">
           Review risk · Adjust exposure
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
+        <h2 className="text-sm font-semibold text-white">Connected exchange accounts</h2>
+        {snapshotLoading ? <p className="mt-2 text-xs text-sigflo-muted">Loading balances and positions...</p> : null}
+        {!snapshotLoading && accountSnapshots.length === 0 ? (
+          <p className="mt-2 text-xs text-sigflo-muted">No connected exchanges yet. Connect Bybit or MEXC in Profile.</p>
+        ) : null}
+        <div className="mt-2 space-y-2">
+          {accountSnapshots.map((snap) => (
+            <div key={snap.exchange} className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase text-white">{snap.exchange}</p>
+                <p className={`text-[11px] ${snap.status === 'connected' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {snap.status === 'connected' ? 'Connected' : 'Sync error'}
+                </p>
+              </div>
+              <p className="mt-1 text-[11px] text-sigflo-muted">
+                {snap.balances.length} balances · {snap.positions.length} positions
+              </p>
+              {snap.balances.slice(0, 3).map((b) => (
+                <div key={`${snap.exchange}-${b.asset}`} className="mt-1 flex items-center justify-between text-[11px]">
+                  <span className="text-sigflo-text">{b.asset}</span>
+                  <span className="font-semibold text-white">{formatQuoteNumber(b.total)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );

@@ -1,0 +1,20 @@
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/ai/suggest"
+  to = "/.netlify/functions/ai-suggest"
+  status = 200
+
+[dev]
+  command = "npm run dev:vite"
+  targetPort = 5173
+  # Netlify Dev proxy URL stays stable for OAuth redirect allowlists (e.g. Supabase).
+  # Use 3999 if 8888 is already taken on your machine.
+  port = 3999
+  publish = "dist"
+
+  ## more info on configuring this file: https://ntl.fyi/file-based-build-config

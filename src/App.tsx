@@ -9,7 +9,7 @@ import BotDetailScreen from '@/screens/BotDetailScreen';
 import BotsScreen from '@/screens/BotsScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
 import PortfolioScreen from '@/screens/PortfolioScreen';
-import { PlaceholderScreen } from '@/screens/PlaceholderScreen';
+import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
 
@@ -38,7 +38,7 @@ export default function App() {
         <Route path="/bots" element={<BotsScreen />} />
         <Route path="/bots/:botId" element={<BotDetailScreen />} />
         <Route path="/portfolio" element={<PortfolioScreen />} />
-        <Route path="/profile" element={<PlaceholderScreen title="Profile" subtitle="Account and preferences — mock shell." />} />
+        <Route path="/profile" element={<ProfileScreen />} />
         {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
         {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
       </Route>

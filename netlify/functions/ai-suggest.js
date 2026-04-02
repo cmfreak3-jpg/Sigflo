@@ -1,70 +1,47 @@
-import type { MarketRowStatus } from '@/types/markets';
-import type { CryptoSignal } from '@/types/signal';
+const DEFAULT_OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
-export type AssistantAction = 'explain' | 'watch' | 'entry';
-
-export type AssistantRequest = {
-  action: AssistantAction;
-  signal: CryptoSignal;
-  status: MarketRowStatus;
-  tradeScore: number;
-};
-
-export type AssistantResponse = {
-  headline: string;
-  body: string;
-  source: 'local' | 'remote';
-};
-
-type OpenAiChatResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-};
-
-function entryState(status: MarketRowStatus, tradeScore: number): 'Too early' | 'Ready' | 'Too late' | 'Too risky' {
-  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
-  if (status === 'triggered' && tradeScore >= 65) return 'Ready';
-  if (status === 'triggered' && tradeScore < 55) return 'Too late';
-  if (status === 'idle') return 'Too early';
-  return 'Too early';
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
-function watchFallback(signal: CryptoSignal): string {
+function watchFallback(signal) {
   if (signal.setupType === 'breakout') return 'breakout or rejection';
   if (signal.setupType === 'pullback') return signal.side === 'long' ? 'hold or fade' : 'reclaim or fail';
   return 'continuation or rollover';
 }
 
-function trendCue(signal: CryptoSignal): string {
-  const t = signal.scoreBreakdown.trendAlignment;
+function trendCue(signal) {
+  const t = signal?.scoreBreakdown?.trendAlignment ?? 0;
   if (t >= 17) return 'Trend holding';
   if (t <= 10) return 'Weak trend';
   return 'Trend mixed';
 }
 
-function momentumCue(signal: CryptoSignal): string {
-  const m = signal.scoreBreakdown.momentumQuality;
+function momentumCue(signal) {
+  const m = signal?.scoreBreakdown?.momentumQuality ?? 0;
   if (m >= 14) return 'Momentum building';
   if (m <= 8) return 'Momentum fading';
   return 'Momentum steady';
 }
 
-function entryQualityScoreFromBreakdown(signal: CryptoSignal): number {
-  const b = signal.scoreBreakdown;
-  return b.trendAlignment + b.momentumQuality + b.structureQuality + b.volumeConfirmation + b.riskConditions;
+function entryQualityScoreFromBreakdown(signal) {
+  const b = signal?.scoreBreakdown;
+  if (!b) return 0;
+  return (b.trendAlignment ?? 0) + (b.momentumQuality ?? 0) + (b.structureQuality ?? 0) + (b.volumeConfirmation ?? 0) + (b.riskConditions ?? 0);
 }
 
-function entryQualityTierLabel(score: number): string {
+function entryQualityTierLabel(score) {
   if (score >= 70) return 'strong';
   if (score >= 50) return 'moderate';
   return 'weak';
 }
 
-function levelHint(signal: CryptoSignal): string {
-  const facts = signal.facts;
+function levelHint(signal) {
+  const facts = signal?.facts;
   if (typeof facts?.distanceToBreakoutAtr === 'number') {
     if (facts.distanceToBreakoutAtr <= 0.2) return 'near trigger';
     if (facts.distanceToBreakoutAtr >= 0.8) return 'far from trigger';
@@ -77,7 +54,7 @@ function levelHint(signal: CryptoSignal): string {
   return 'at a key level';
 }
 
-function actionFormatHint(action: AssistantAction): string {
+function actionFormatHint(action) {
   if (action === 'explain') {
     return 'Format body as 4 short lines: Thesis, Trigger, Invalidation, Execution.';
   }
@@ -87,12 +64,19 @@ function actionFormatHint(action: AssistantAction): string {
   return 'Format body as 4 short numbered steps (1-4): setup quality, trigger plan, sizing, invalidation.';
 }
 
-function buildLocalResponse(req: AssistantRequest): AssistantResponse {
+function entryState(status, tradeScore) {
+  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
+  if (status === 'triggered' && tradeScore >= 65) return 'Ready';
+  if (status === 'triggered' && tradeScore < 55) return 'Too late';
+  if (status === 'idle') return 'Too early';
+  return 'Too early';
+}
+
+function buildLocalResponse(req) {
   const { action, signal, status, tradeScore } = req;
   if (action === 'explain') {
     const bias = signal.side === 'long' ? 'Long' : 'Short';
     return {
-      source: 'local',
       headline: `Explain - ${signal.pair}`,
       body: `${bias} ${signal.setupType} setup (${signal.setupScore}/100), ${levelHint(signal)}.\nTrigger: require clean confirmation with volume before entry.\nInvalidation: break back through setup structure.\nContext: ${trendCue(signal)}; ${momentumCue(signal)}; status ${status}; risk ${signal.riskTag}.`,
     };
@@ -103,7 +87,6 @@ function buildLocalResponse(req: AssistantRequest): AssistantResponse {
     const next = signal.watchNext?.trim();
     const fallback = `Watch ${watchFallback(signal)}.`;
     return {
-      source: 'local',
       headline: `What to watch - ${signal.pair}`,
       body: cue && next ? `Primary: ${cue}\nNext: ${next}\nExecution: enter only on confirmation, not anticipation.` : cue ? `Primary: ${cue}\nExecution: wait for confirmation candle and volume support.` : next ? `Primary: ${fallback}\nNext: ${next}\nExecution: avoid entries in chop.` : `Primary: ${fallback}\nExecution: wait for clean reaction at level.`,
     };
@@ -120,13 +103,12 @@ function buildLocalResponse(req: AssistantRequest): AssistantResponse {
   else if (timing === 'Too risky') coach = 'Risk posture is elevated - tighten size or skip.';
 
   return {
-    source: 'local',
     headline: `Improve entry - ${signal.pair}`,
     body: `Entry quality: ${tier} (${eq}/100), timing: ${timing}.\nPlan: ${coach}\nExecution: size down until confirmation, then scale only if structure holds.`,
   };
 }
 
-function buildPrompt(req: AssistantRequest): { system: string; user: string } {
+function buildPrompt(req) {
   const local = buildLocalResponse(req);
   const system =
     'You are a tactical crypto execution assistant for Sigflo. Return strict JSON only with keys: headline, body. Tone: direct, trader-like, actionable. Keep body to 3-5 short lines. Include specific fields when relevant: Trigger, Invalidation, Execution. No markdown, no disclaimers, no emojis.';
@@ -148,74 +130,70 @@ body: ${local.body}`;
   return { system, user };
 }
 
-function parseJsonObject(text: string): Partial<AssistantResponse> | null {
-  try {
-    const parsed = JSON.parse(text) as Partial<AssistantResponse>;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function coerceRemoteResponse(data: unknown): AssistantResponse | null {
-  if (!data || typeof data !== 'object') return null;
-  const raw = data as Record<string, unknown>;
-  if (typeof raw.headline === 'string' && typeof raw.body === 'string') {
-    return { headline: raw.headline, body: raw.body, source: 'remote' };
-  }
-  const choices = (raw as OpenAiChatResponse).choices;
-  const content = choices?.[0]?.message?.content;
+function extractAssistantResponse(data) {
+  const content = data?.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || content.trim().length === 0) return null;
-  const asJson = parseJsonObject(content.trim());
-  if (asJson?.headline && asJson?.body) {
-    return { headline: asJson.headline, body: asJson.body, source: 'remote' };
+  const parsed = safeJsonParse(content.trim());
+  if (parsed && typeof parsed.headline === 'string' && typeof parsed.body === 'string') {
+    return { headline: parsed.headline, body: parsed.body };
   }
-  return { headline: 'AI suggestion', body: content.trim(), source: 'remote' };
+  return { headline: 'AI suggestion', body: content.trim() };
 }
 
-export async function requestAssistantSuggestion(req: AssistantRequest): Promise<AssistantResponse> {
-  // Safe default: frontend calls your own backend/proxy endpoint.
-  const proxyEndpoint = import.meta.env.VITE_AI_PROXY_ENDPOINT?.trim() || '/api/ai/suggest';
-  // Temporary testing only: allow direct browser -> OpenAI if explicitly enabled.
-  const allowBrowserOpenAi = import.meta.env.VITE_AI_ALLOW_BROWSER_OPENAI === 'true';
-  const browserOpenAiEndpoint = import.meta.env.VITE_AI_ENDPOINT?.trim();
-  const browserOpenAiKey = import.meta.env.VITE_AI_API_KEY?.trim();
-  const model = import.meta.env.VITE_AI_MODEL?.trim() || 'gpt-4o-mini';
+export const handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204 };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
+  }
+
+  const request = safeJsonParse(event.body || '');
+  if (!request || !request.action || !request.signal) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid payload' }) };
+  }
+
+  const fallback = buildLocalResponse(request);
+  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+  const endpoint = process.env.OPENAI_API_ENDPOINT || process.env.AI_ENDPOINT || DEFAULT_OPENAI_ENDPOINT;
+  const model = process.env.OPENAI_MODEL || process.env.AI_MODEL || 'gpt-4o-mini';
+
+  if (!apiKey) {
+    return { statusCode: 200, body: JSON.stringify(fallback) };
+  }
 
   try {
-    const target = allowBrowserOpenAi && browserOpenAiEndpoint ? browserOpenAiEndpoint : proxyEndpoint;
-    const payload =
-      allowBrowserOpenAi && browserOpenAiEndpoint
-        ? (() => {
-            const prompt = buildPrompt(req);
-            return {
-              model,
-              temperature: 0.2,
-              response_format: { type: 'json_object' },
-              messages: [
-                { role: 'system', content: prompt.system },
-                { role: 'user', content: prompt.user },
-              ],
-            };
-          })()
-        : req;
-
+    const prompt = buildPrompt(request);
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 9000);
-    const res = await fetch(target, {
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(allowBrowserOpenAi && browserOpenAiKey ? { Authorization: `Bearer ${browserOpenAiKey}` } : {}),
+        Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: prompt.system },
+          { role: 'user', content: prompt.user },
+        ],
+      }),
       signal: controller.signal,
     });
-    window.clearTimeout(timeout);
-    if (!res.ok) return buildLocalResponse(req);
-    const data = (await res.json()) as unknown;
-    return coerceRemoteResponse(data) ?? buildLocalResponse(req);
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return { statusCode: 200, body: JSON.stringify(fallback) };
+    }
+
+    const data = await response.json();
+    const output = extractAssistantResponse(data) || fallback;
+    return { statusCode: 200, body: JSON.stringify(output) };
   } catch {
-    return buildLocalResponse(req);
+    return { statusCode: 200, body: JSON.stringify(fallback) };
   }
-}
+};

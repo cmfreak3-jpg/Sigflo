@@ -1,0 +1,14 @@
+import 'dotenv/config';
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.string().optional(),
+  PORT: z.coerce.number().default(8787),
+  FRONTEND_ORIGIN: z.string().default('http://localhost:3999'),
+  DATABASE_URL: z.string().min(1),
+  /** Supabase project JWT secret (Settings → API → JWT Secret). Used to verify access tokens. */
+  SUPABASE_JWT_SECRET: z.string().min(1).optional(),
+  CREDENTIAL_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/),
+});
+
+export const env = envSchema.parse(process.env);

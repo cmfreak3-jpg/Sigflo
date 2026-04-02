@@ -4,12 +4,15 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "netlify dev",
+    "dev:vite": "vite",
+    "dev:backend": "npm run dev --prefix backend",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint ."
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
     "lightweight-charts": "^5.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
