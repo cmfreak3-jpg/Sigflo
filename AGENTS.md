@@ -31,6 +31,6 @@ See `package.json` scripts:
 - **ESLint config missing:** The repo declares ESLint 9 as a dev dependency but does not include an `eslint.config.js` (required by ESLint v9). Running `npm run lint` will fail until this config is added.
 - **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
 - The app uses `import.meta.env.DEV` (built-in Vite flag) only — no custom `.env` files are needed for the core frontend.
-- **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: true` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
+- **Vite `host` + `allowedHosts`:** `vite.config.ts` sets `server.host: true` and `server.allowedHosts: true` so the dev server binds to `0.0.0.0` (all interfaces) and accepts proxied hostnames. Without `host: true`, the Cursor Cloud proxy cannot reach the server (connection refused). Without `allowedHosts: true`, Vite blocks the proxied hostname.
 - **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. It falls back to mock data gracefully — this is expected behavior.
 - **Netlify CLI required:** `npm run dev` invokes `netlify dev`. If the CLI is not installed globally, this command will fail. Install with `npm install -g netlify-cli`.
