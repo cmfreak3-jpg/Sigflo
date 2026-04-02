@@ -6,6 +6,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(8787),
   FRONTEND_ORIGIN: z.string().default('http://localhost:3999'),
   DATABASE_URL: z.string().min(1),
+  /** Supabase project URL, e.g. https://xxxx.supabase.co (used for JWKS + issuer). */
+  SUPABASE_URL: z.string().url().optional(),
   /** Supabase project JWT secret (Settings → API → JWT Secret). Used to verify access tokens. */
   SUPABASE_JWT_SECRET: z.string().min(1).optional(),
   CREDENTIAL_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/),

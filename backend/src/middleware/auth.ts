@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from 'jose';
 import { env } from '../config/env.js';
 import { log } from '../lib/logger.js';
 import { upsertUser } from '../repositories/usersRepo.js';
@@ -19,7 +19,13 @@ function bearerToken(req: Request): string | null {
   return raw.slice(7).trim() || null;
 }
 
-async function verifySupabaseJwt(token: string): Promise<{ sub: string; email?: string } | null> {
+type VerifiedUser = { sub: string; email?: string };
+
+function normalizeSupabaseUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+async function verifySupabaseJwtHs256(token: string): Promise<VerifiedUser | null> {
   if (!env.SUPABASE_JWT_SECRET) return null;
   try {
     const secret = new TextEncoder().encode(env.SUPABASE_JWT_SECRET);
@@ -33,11 +39,54 @@ async function verifySupabaseJwt(token: string): Promise<{ sub: string; email?: 
   }
 }
 
+async function verifySupabaseJwtJwks(token: string): Promise<VerifiedUser | null> {
+  if (!env.SUPABASE_URL) return null;
+  try {
+    const supabaseUrl = normalizeSupabaseUrl(env.SUPABASE_URL);
+    const jwksUrl = new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
+    const jwks = createRemoteJWKSet(jwksUrl);
+    const { payload } = await jwtVerify(token, jwks, {
+      algorithms: ['RS256'],
+      issuer: `${supabaseUrl}/auth/v1`,
+      audience: 'authenticated',
+    });
+    const sub = typeof payload.sub === 'string' ? payload.sub : null;
+    if (!sub) return null;
+    const email = typeof payload.email === 'string' ? payload.email : undefined;
+    return { sub, email };
+  } catch {
+    return null;
+  }
+}
+
+async function verifySupabaseJwt(token: string): Promise<VerifiedUser | null> {
+  // Prefer JWKS (modern Supabase signing keys) when token header indicates RS256.
+  try {
+    const header = decodeProtectedHeader(token);
+    if (header.alg === 'RS256') {
+      const jwksVerified = await verifySupabaseJwtJwks(token);
+      if (jwksVerified) return jwksVerified;
+    }
+  } catch {
+    // ignore header decode errors; fall through
+  }
+
+  // Fallback to legacy HS256 secret if configured.
+  const hsVerified = await verifySupabaseJwtHs256(token);
+  if (hsVerified) return hsVerified;
+
+  // Last attempt: some projects still issue RS256 but header parsing failed.
+  const jwksVerified = await verifySupabaseJwtJwks(token);
+  if (jwksVerified) return jwksVerified;
+
+  return null;
+}
+
 export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const token = bearerToken(req);
 
-    if (token && env.SUPABASE_JWT_SECRET) {
+    if (token && (env.SUPABASE_JWT_SECRET || env.SUPABASE_URL)) {
       const verified = await verifySupabaseJwt(token);
       if (!verified) {
         res.status(401).json({ error: 'Invalid or expired session.' });
