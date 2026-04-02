@@ -11,7 +11,7 @@ Sigflo is a React + TypeScript + Vite SPA for crypto trading signals. Market dat
 | Service | How to run | Default URL | Required? |
 |---|---|---|---|
 | Netlify Dev (proxy + serverless functions) | `npm run dev` | `http://localhost:3999` | Recommended — wraps Vite + serves `/api/ai/suggest` |
-| Vite Dev Server (UI only) | `npm run dev:vite` | `http://localhost:5173` | Alternative — frontend only, no serverless |
+| Vite Dev Server (UI only) | `npm run dev:vite` | `http://localhost:3000` | Alternative — frontend only, no serverless |
 | Backend (Express) | `cd backend && npm install && npm run dev` | `http://localhost:8787` | Optional — exchange integrations only |
 
 **Note:** `npm run dev` runs `netlify dev`, which requires the Netlify CLI to be installed globally (`npm install -g netlify-cli`). It proxies Vite on port 5173 and serves on port 3999. Use `npm run dev:vite` if you only need the UI.
@@ -21,7 +21,7 @@ Sigflo is a React + TypeScript + Vite SPA for crypto trading signals. Market dat
 See `package.json` scripts:
 
 - **Dev server (recommended):** `npm run dev` (Netlify Dev on port 3999)
-- **Dev server (UI only):** `npm run dev:vite` (Vite on port 5173)
+- **Dev server (UI only):** `npm run dev:vite` (Vite on port 3000)
 - **Build (tsc + vite):** `npm run build`
 - **Lint:** `npm run lint`
 - **Preview prod build:** `npm run preview`
@@ -31,6 +31,6 @@ See `package.json` scripts:
 - **ESLint config missing:** The repo declares ESLint 9 as a dev dependency but does not include an `eslint.config.js` (required by ESLint v9). Running `npm run lint` will fail until this config is added.
 - **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
 - The app uses `import.meta.env.DEV` (built-in Vite flag) only — no custom `.env` files are needed for the core frontend.
-- **Vite `host` + `allowedHosts`:** `vite.config.ts` sets `server.host: true` and `server.allowedHosts: true` so the dev server binds to `0.0.0.0` (all interfaces) and accepts proxied hostnames. Without `host: true`, the Cursor Cloud proxy cannot reach the server (connection refused). Without `allowedHosts: true`, Vite blocks the proxied hostname.
+- **Vite `host` + `allowedHosts` + `port`:** `vite.config.ts` sets `server.port: 3000`, `server.host: true`, and `server.allowedHosts: true`. Port 3000 is used because port 5173 is not forwarded by the Cursor Cloud proxy. `host: true` binds to `0.0.0.0` (all interfaces). `allowedHosts: true` accepts proxied hostnames.
 - **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. It falls back to mock data gracefully — this is expected behavior.
 - **Netlify CLI required:** `npm run dev` invokes `netlify dev`. If the CLI is not installed globally, this command will fail. Install with `npm install -g netlify-cli`.
