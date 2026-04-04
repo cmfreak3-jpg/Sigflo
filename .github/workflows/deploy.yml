@@ -26,7 +26,8 @@ jobs:
 
       - run: npm ci
 
-      - run: tsc -b && npx vite build --base=/sigflo/
+      - run: npx tsc -b
+      - run: npx vite build --base=/sigflo/
 
       - run: cp dist/index.html dist/404.html
 
