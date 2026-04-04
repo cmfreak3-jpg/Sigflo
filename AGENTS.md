@@ -4,19 +4,22 @@
 
 ### Overview
 
-Sigflo is a frontend-only React + TypeScript + Vite SPA for crypto trading signals. There is **no backend** — all market data comes from Bybit public API (REST + WebSocket) directly from the browser. No API keys or secrets are required.
+Sigflo is a React + TypeScript + Vite SPA for crypto trading signals. Core market data comes from Bybit public API (REST + WebSocket) directly from the browser. An optional Express backend in `backend/` handles exchange integrations (requires PostgreSQL). No API keys or secrets are required for the core frontend.
 
 ### Services
 
-| Service | How to run | Default URL |
-|---|---|---|
-| Vite Dev Server | `npm run dev` | `http://localhost:5173` |
+| Service | How to run | Default URL | Required? |
+|---|---|---|---|
+| Vite Dev Server | `npm run dev:vite` | `http://localhost:5173` | **Yes** |
+| Express Backend | `npm run dev:backend` | `http://127.0.0.1:8787` | No (exchange integrations only) |
+| Netlify Dev | `npm run dev` (needs `netlify-cli`) | `http://localhost:3999` | No (wraps Vite + serverless functions) |
 
 ### Key commands
 
 See `package.json` scripts:
 
-- **Dev server:** `npm run dev`
+- **Dev server (Vite only):** `npm run dev:vite`
+- **Dev server (Netlify Dev, needs global `netlify-cli`):** `npm run dev`
 - **Build (tsc + vite):** `npm run build`
 - **Lint:** `npm run lint`
 - **Preview prod build:** `npm run preview`
