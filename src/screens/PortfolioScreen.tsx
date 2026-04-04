@@ -328,7 +328,7 @@ export default function PortfolioScreen() {
           <>
             <span className="text-sigflo-text">Link Bybit in </span>
             <Link to="/profile" className={feedLinkClass}>
-              Profile
+              Account
             </Link>
             <span className="text-sigflo-text"> — then Sigflo can speak from your real book.</span>
           </>
@@ -533,7 +533,7 @@ export default function PortfolioScreen() {
         </div>
         {!connected ? (
           <p className="mt-3 text-center text-[11px] leading-relaxed text-sigflo-muted">
-            Connect your exchange in Profile to see live net worth.
+            Connect your exchange in Account to see live net worth.
           </p>
         ) : positions.length === 0 ? (
           <p className="mt-3 text-center text-[11px] leading-relaxed">
@@ -589,7 +589,7 @@ export default function PortfolioScreen() {
         <h2 className={sectionTitleClass}>Open positions</h2>
         {!connected ? (
           <div className="rounded-[16px] border border-dashed border-white/[0.1] bg-black/25 px-4 py-6 text-center text-sm text-sigflo-muted">
-            No exchange linked — connect in Profile to sync positions.
+            No exchange linked — connect in Account to sync positions.
           </div>
         ) : loading ? (
           <p className="text-sm text-sigflo-muted">Loading positions…</p>

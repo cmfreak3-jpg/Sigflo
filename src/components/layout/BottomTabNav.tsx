@@ -5,7 +5,7 @@ const tabs = [
   { to: '/markets', label: 'Markets', icon: MarketsIcon },
   { to: '/bots', label: 'Bots', icon: BotsIcon },
   { to: '/portfolio', label: 'Portfolio', icon: PortfolioIcon },
-  { to: '/profile', label: 'Profile', icon: ProfileIcon },
+  { to: '/profile', label: 'Account', icon: ProfileIcon },
 ] as const;
 
 export function BottomTabNav() {

@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
+import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { supabase } from '@/lib/supabase';
 import type { ExchangeId } from '@/types/integrations';
+
+const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
 
 type RiskMode = 'Conservative' | 'Balanced' | 'Aggressive';
 
@@ -20,8 +25,26 @@ export default function ProfileScreen() {
   } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
-  const { items: integrations, loading: integrationsLoading, connect, disconnect } = useExchangeIntegrations();
-  const { items: snapshots, loading: snapshotLoading, refresh: refreshSnapshots } = useAccountSnapshot();
+  const [disconnectTarget, setDisconnectTarget] = useState<ExchangeId | null>(null);
+  const [disconnectBusy, setDisconnectBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [securityBusy, setSecurityBusy] = useState<'password' | 'sessions' | '2fa' | null>(null);
+  const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [mfaEnabled, setMfaEnabled] = useState<boolean>(false);
+  const [mfaStatusLoading, setMfaStatusLoading] = useState<boolean>(false);
+  const [totpCopyFlash, setTotpCopyFlash] = useState(false);
+  const [totpSetup, setTotpSetup] = useState<{
+    factorId: string;
+    challengeId: string | null;
+    qrCode: string | null;
+    secret: string;
+    otpauthUri: string | null;
+    code: string;
+  } | null>(null);
+  const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect } = useExchangeIntegrations();
+  const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } = useAccountSnapshot();
+  const { signals, connection: signalConnection } = useSignalEngine();
+  const { statusMap } = useBotStatuses();
 
   const displayName = user
     ? (user.user_metadata?.full_name as string | undefined) ??
@@ -39,15 +62,243 @@ export default function ProfileScreen() {
   }, [user?.email, displayName]);
 
   const canUseExchangeApi = authMode === 'dev' || Boolean(user);
+  const bybitIntegration = integrations.find((item) => item.exchange === 'bybit');
+  const connectedBybit = Boolean(bybitIntegration);
+  const lastSynced = bybitIntegration?.lastValidatedAt ? new Date(bybitIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+  const signalCount = signals.length;
+  const winRate = useMemo(() => {
+    if (closedTrades.length === 0) return '63%';
+    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).length;
+    return `${Math.round((wins / closedTrades.length) * 100)}%`;
+  }, [closedTrades]);
+  const avgRr = useMemo(() => {
+    if (closedTrades.length === 0) return '1.9';
+    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).map((trade) => trade.closedPnl);
+    const losses = closedTrades.filter((trade) => trade.closedPnl < 0).map((trade) => Math.abs(trade.closedPnl));
+    if (wins.length === 0 || losses.length === 0) return '—';
+    const avgWin = wins.reduce((sum, value) => sum + value, 0) / wins.length;
+    const avgLoss = losses.reduce((sum, value) => sum + value, 0) / losses.length;
+    return (avgWin / Math.max(avgLoss, 0.0001)).toFixed(1);
+  }, [closedTrades]);
+  const activeBotCount = useMemo(
+    () => Object.values(statusMap).filter((status) => status === 'active').length,
+    [statusMap],
+  );
+  const apiConnected = !integrationsError && !snapshotError;
+  const dataStatus = signalConnection === 'connected' ? 'Live' : signalConnection === 'reconnecting' ? 'Syncing' : 'Offline';
+  const syncIssue = integrationsError || snapshotError;
   const riskColor = useMemo(() => {
     if (riskMode === 'Conservative') return 'text-emerald-300';
     if (riskMode === 'Aggressive') return 'text-rose-300';
-    return 'text-cyan-300';
+    return 'text-sigflo-accent';
   }, [riskMode]);
 
+  useEffect(() => {
+    if (!disconnectTarget) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !disconnectBusy) {
+        setDisconnectTarget(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [disconnectTarget, disconnectBusy]);
+
+  useEffect(() => {
+    async function loadMfaStatus() {
+      if (!supabase || authMode !== 'supabase' || !user) {
+        setMfaEnabled(false);
+        return;
+      }
+      try {
+        setMfaStatusLoading(true);
+        const mfa = (supabase.auth as unknown as { mfa?: Record<string, unknown> }).mfa;
+        const listFactors = (mfa as {
+          listFactors?: () => Promise<{ data?: { all?: Array<{ status?: string }> }; error?: Error }>;
+        })?.listFactors;
+        if (!listFactors) {
+          setMfaEnabled(false);
+          return;
+        }
+        const { data, error } = await listFactors();
+        if (error) throw error;
+        const allFactors = data?.all ?? [];
+        const hasVerified = allFactors.some((factor) => factor.status === 'verified');
+        setMfaEnabled(hasVerified);
+      } catch {
+        setMfaEnabled(false);
+      } finally {
+        setMfaStatusLoading(false);
+      }
+    }
+    void loadMfaStatus();
+  }, [authMode, user?.id, totpSetup]);
+
+  async function handleChangePassword() {
+    if (!supabase || !user?.email) {
+      setSecurityMessage('Sign in with Google to manage password resets.');
+      return;
+    }
+    try {
+      setSecurityBusy('password');
+      setSecurityMessage(null);
+      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const redirectTo = `${window.location.origin}${base}/profile`;
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo });
+      if (error) throw error;
+      setSecurityMessage(`Password reset link sent to ${user.email}.`);
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : 'Failed to start password reset.');
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  async function handleManageSessions() {
+    if (!supabase || !user) {
+      setSecurityMessage('Sign in to manage active sessions.');
+      return;
+    }
+    try {
+      setSecurityBusy('sessions');
+      setSecurityMessage(null);
+      const { error } = await supabase.auth.signOut({ scope: 'others' });
+      if (error) throw error;
+      setSecurityMessage('Signed out other sessions. Current session is still active.');
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : 'Failed to manage sessions.');
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  async function handleEnable2fa() {
+    if (authMode !== 'supabase' || !supabase || !user) {
+      setSecurityMessage('2FA setup requires Supabase sign-in.');
+      return;
+    }
+    try {
+      setSecurityBusy('2fa');
+      setSecurityMessage(null);
+      const mfa = supabase.auth.mfa;
+      if (!mfa) {
+        setSecurityMessage('MFA is not available in this auth session. Try signing out and in again.');
+        return;
+      }
+      const { data: listed, error: listError } = await mfa.listFactors();
+      if (listError) throw listError;
+      const allFactors = listed?.all ?? [];
+      const totpFactors = allFactors.filter((f) => f.factor_type === 'totp');
+      const verifiedTotp = totpFactors.find((f) => f.status === 'verified');
+      if (verifiedTotp) {
+        setMfaEnabled(true);
+        setSecurityMessage('2FA is already enabled on this account.');
+        return;
+      }
+      for (const factor of totpFactors.filter((f) => f.status === 'unverified')) {
+        const { error: unenrollError } = await mfa.unenroll({ factorId: factor.id });
+        if (unenrollError) throw unenrollError;
+      }
+      const { data, error } = await mfa.enroll({ factorType: 'totp', friendlyName: MFA_TOTP_FRIENDLY_NAME });
+      if (error) throw error;
+      const factorId = data?.id as string | undefined;
+      const qrCode = (data?.totp?.qr_code as string | undefined)?.trim() || null;
+      const secret = (data?.totp?.secret as string | undefined)?.trim() || '';
+      const otpauthUri = (data?.totp?.uri as string | undefined)?.trim() || null;
+      if (!factorId || !secret) {
+        setSecurityMessage('Could not initialize TOTP setup. Try again.');
+        return;
+      }
+      setTotpSetup({
+        factorId,
+        challengeId: null,
+        qrCode,
+        secret,
+        otpauthUri,
+        code: '',
+      });
+      setSecurityMessage(
+        'Scan the QR if you can, or enter the setup key / open the setup link, then enter the 6-digit code.',
+      );
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? `2FA setup failed: ${error.message}` : '2FA setup failed. Please try again.');
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  async function handleVerifyTotp() {
+    if (!supabase || !totpSetup) return;
+    if (!/^\d{6}$/.test(totpSetup.code.trim())) {
+      setSecurityMessage('Enter a valid 6-digit authenticator code.');
+      return;
+    }
+    try {
+      setSecurityBusy('2fa');
+      setSecurityMessage(null);
+      const mfa = (supabase.auth as unknown as { mfa?: Record<string, unknown> }).mfa;
+      const challenge = (mfa as { challenge?: (args: { factorId: string }) => Promise<{ data?: any; error?: Error }> })?.challenge;
+      const verify = (mfa as {
+        verify?: (args: { factorId: string; challengeId: string; code: string }) => Promise<{ data?: any; error?: Error }>;
+      })?.verify;
+      if (!challenge || !verify) {
+        setSecurityMessage('This Supabase SDK version does not support MFA verification APIs.');
+        return;
+      }
+      let challengeId = totpSetup.challengeId;
+      if (!challengeId) {
+        const challengeRes = await challenge({ factorId: totpSetup.factorId });
+        if (challengeRes.error) throw challengeRes.error;
+        challengeId = (challengeRes.data?.id as string | undefined) ?? null;
+        if (!challengeId) {
+          setSecurityMessage('Unable to create verification challenge. Please try again.');
+          return;
+        }
+      }
+      const verifyRes = await verify({
+        factorId: totpSetup.factorId,
+        challengeId,
+        code: totpSetup.code.trim(),
+      });
+      if (verifyRes.error) throw verifyRes.error;
+      setMfaEnabled(true);
+      setTotpCopyFlash(false);
+      setSecurityMessage('2FA enabled successfully.');
+      setTotpSetup(null);
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : 'Failed to verify 2FA code.');
+    } finally {
+      setSecurityBusy(null);
+    }
+  }
+
+  async function handleCancelTotpSetup() {
+    setTotpCopyFlash(false);
+    if (!supabase || !totpSetup) {
+      setTotpSetup(null);
+      return;
+    }
+    try {
+      const mfa = (supabase.auth as unknown as { mfa?: Record<string, unknown> }).mfa;
+      const unenroll = (mfa as { unenroll?: (args: { factorId: string }) => Promise<{ error?: Error }> })?.unenroll;
+      if (unenroll) {
+        const { error } = await unenroll({ factorId: totpSetup.factorId });
+        if (error) throw error;
+      }
+    } catch {
+      // best-effort cleanup; factor remains unverified if unenroll is unavailable
+    } finally {
+      setTotpSetup(null);
+    }
+  }
+
   return (
-    <div className="space-y-3 pb-6 pt-4">
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4">
+    <div className="space-y-3.5 pb-6 pt-4">
+      <div className="px-1">
+        <h2 className="text-lg font-semibold tracking-tight text-white">Account</h2>
+      </div>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4 shadow-[0_0_28px_-20px_rgba(0,255,200,0.35)]">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/[0.14] text-sm font-bold text-cyan-200">
@@ -58,9 +309,13 @@ export default function ProfileScreen() {
               <p className="text-xs text-sigflo-muted">{displayEmail}</p>
             </div>
           </div>
-          <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
-            Pro
-          </span>
+          <div className="space-y-1 text-right">
+            <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+              Pro
+            </span>
+            <p className="text-[11px] font-semibold text-sigflo-accent">{connectedBybit ? 'Connected to Bybit' : 'No exchange connected'}</p>
+            {lastSynced ? <p className="text-[10px] text-sigflo-muted">Last synced: {lastSynced}</p> : null}
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {authMode === 'supabase' && !authLoading && !user ? (
@@ -85,25 +340,30 @@ export default function ProfileScreen() {
             <p className="text-[11px] text-sigflo-muted">Auth: dev header (set VITE_SUPABASE_* for Google sign-in).</p>
           ) : null}
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Your Stats</p>
+        <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Signals</p>
-            <p className="mt-1 text-base font-bold text-white">1,248</p>
+            <p className="mt-1 text-base font-bold text-white">{signalCount.toLocaleString()}</p>
           </div>
           <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Win rate</p>
-            <p className="mt-1 text-base font-bold text-emerald-300">63%</p>
+            <p className="mt-1 text-base font-bold text-emerald-300">{winRate}</p>
           </div>
           <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Avg R:R</p>
-            <p className="mt-1 text-base font-bold text-white">1.9</p>
+            <p className="mt-1 text-base font-bold text-white">{avgRr}</p>
           </div>
         </div>
+        <p className="mt-2 text-[11px] text-sigflo-muted">Based on your trading activity</p>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Trading profile</p>
-        <div className="mt-2 grid grid-cols-3 gap-2">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Trading Profile</p>
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
           {(['Conservative', 'Balanced', 'Aggressive'] as RiskMode[]).map((mode) => {
             const active = riskMode === mode;
             return (
@@ -114,7 +374,7 @@ export default function ProfileScreen() {
                 className={`rounded-lg border px-2 py-2 text-[11px] font-semibold transition ${
                   active
                     ? 'border-cyan-400/35 bg-cyan-500/12 text-cyan-100'
-                    : 'border-white/[0.08] bg-black/20 text-sigflo-muted hover:text-sigflo-text'
+                    : 'border-white/[0.08] bg-black/20 text-sigflo-muted hover:border-white/[0.14] hover:text-sigflo-text'
                 }`}
               >
                 {mode}
@@ -122,20 +382,20 @@ export default function ProfileScreen() {
             );
           })}
         </div>
-        <p className={`mt-2 text-xs ${riskColor}`}>Current mode: {riskMode}</p>
+        <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Alerts</p>
         <div className="mt-2 space-y-2">
-          <ToggleRow label="Push alerts" value={pushAlerts} onChange={setPushAlerts} />
-          <ToggleRow label="High-risk setup alerts" value={highRiskAlerts} onChange={setHighRiskAlerts} />
-          <ToggleRow label="Daily AI briefing" value={dailyBriefing} onChange={setDailyBriefing} />
+          <ToggleRow label="Push alerts" subtext="Signals & execution updates" value={pushAlerts} onChange={setPushAlerts} />
+          <ToggleRow label="High-risk setup alerts" subtext="Aggressive setups only" value={highRiskAlerts} onChange={setHighRiskAlerts} />
+          <ToggleRow label="Daily AI briefing" subtext="Daily market summary" value={dailyBriefing} onChange={setDailyBriefing} />
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Exchange connections</p>
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Exchange Connections</p>
         {authMode === 'supabase' && !user && !authLoading ? (
           <p className="mt-2 text-[11px] text-amber-200/90">Sign in with Google to connect Bybit or MEXC.</p>
         ) : null}
@@ -145,22 +405,35 @@ export default function ProfileScreen() {
             const snapshot = snapshots.find((s) => s.exchange === exchange);
             const connected = Boolean(integration);
             return (
-              <div key={exchange} className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+              <div
+                key={exchange}
+                className={`rounded-xl border p-2.5 transition ${
+                  connected
+                    ? 'border-sigflo-accent/30 bg-gradient-to-b from-sigflo-accent/[0.08] to-black/25 shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
+                    : 'border-white/[0.06] bg-black/20'
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
+                    <p className={`text-[11px] font-medium ${connected ? 'text-emerald-300' : 'text-sigflo-muted'}`}>
+                      {connected ? 'Connected' : 'Not connected'}
+                    </p>
                     <p className="text-[11px] text-sigflo-muted">
-                      {connected ? `Connected${integration?.lastValidatedAt ? ` · validated ${new Date(integration.lastValidatedAt).toLocaleString()}` : ''}` : 'Not connected'}
+                      {connected
+                        ? `Last synced: ${
+                            integration?.lastValidatedAt
+                              ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                              : 'just now'
+                          }`
+                        : 'Link read-only API access'}
                     </p>
                   </div>
                   {connected ? (
                     <button
                       type="button"
-                      onClick={async () => {
-                        await disconnect(exchange);
-                        await refreshSnapshots();
-                      }}
-                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200"
+                      onClick={() => setDisconnectTarget(exchange)}
+                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
                     >
                       Disconnect
                     </button>
@@ -172,7 +445,7 @@ export default function ProfileScreen() {
                         setConnectError(null);
                         setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
                       }}
-                      className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Connect
                     </button>
@@ -195,11 +468,31 @@ export default function ProfileScreen() {
           })}
         </div>
         {integrationsLoading || snapshotLoading ? <p className="mt-2 text-[11px] text-sigflo-muted">Syncing integrations...</p> : null}
+        {syncIssue ? (
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2">
+            <p className="text-[11px] text-amber-100">Last sync failed: {syncIssue}</p>
+            <button
+              type="button"
+              disabled={syncBusy}
+              onClick={async () => {
+                setSyncBusy(true);
+                try {
+                  await Promise.all([refreshIntegrations(), refreshSnapshots()]);
+                } finally {
+                  setSyncBusy(false);
+                }
+              }}
+              className="shrink-0 rounded-lg border border-amber-200/35 bg-amber-200/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100 transition hover:bg-amber-200/15 disabled:opacity-50"
+            >
+              {syncBusy ? 'Retrying...' : 'Retry'}
+            </button>
+          </div>
+        ) : null}
         {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
       </section>
 
       {exchangeForm ? (
-        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3">
+        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3.5">
           <p className="text-sm font-semibold text-cyan-100">Connect {exchangeForm.exchange.toUpperCase()}</p>
           <div className="mt-2 space-y-2">
             <input
@@ -262,24 +555,191 @@ export default function ProfileScreen() {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Security</p>
-        <div className="mt-2 space-y-2">
-          <ActionButton label="Change password" />
-          <ActionButton label="Enable 2FA (recommended)" />
-          <ActionButton label="Manage sessions" />
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">System</p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <SystemIndicator label="API" value={apiConnected ? 'Connected' : 'Degraded'} active={apiConnected} />
+          <SystemIndicator label="Data" value={dataStatus} active={signalConnection === 'connected'} />
+          <SystemIndicator label="Bots" value={`${activeBotCount} active`} active={activeBotCount > 0} />
         </div>
       </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Security</p>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              mfaEnabled
+                ? 'border-emerald-400/35 bg-emerald-500/15 text-emerald-200'
+                : 'border-white/10 bg-white/[0.04] text-sigflo-muted'
+            }`}
+          >
+            {mfaStatusLoading ? 'Checking 2FA...' : mfaEnabled ? '2FA enabled' : '2FA not enabled'}
+          </span>
+        </div>
+        <div className="mt-2 space-y-2">
+          <ActionButton
+            label="Change password"
+            subtext="Send secure reset link to your email"
+            busy={securityBusy === 'password'}
+            busyLabel="Sending..."
+            onClick={() => void handleChangePassword()}
+          />
+          <ActionButton
+            label="Enable 2FA"
+            subtext="Set up authenticator app (TOTP)"
+            busy={securityBusy === '2fa'}
+            busyLabel="Preparing..."
+            onClick={() => void handleEnable2fa()}
+          />
+          <ActionButton
+            label="Manage sessions"
+            subtext="Sign out other active devices"
+            busy={securityBusy === 'sessions'}
+            busyLabel="Applying..."
+            onClick={() => void handleManageSessions()}
+          />
+        </div>
+        {totpSetup ? (
+          <div className="mt-2 rounded-xl border border-sigflo-accent/25 bg-sigflo-accent/[0.06] p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
+            {totpSetup.qrCode ? (
+              <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-black/35 p-2">
+                <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
+              </div>
+            ) : (
+              <p className="mt-2 text-[11px] text-sigflo-muted">QR not available — use manual setup key or the link below.</p>
+            )}
+            <div className="mt-2 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Manual setup key</p>
+              <p className="text-[11px] text-sigflo-muted">
+                In your authenticator app, choose &quot;Enter setup key&quot; (or equivalent) and paste this secret.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={totpSetup.secret}
+                  className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-2 py-2 font-mono text-[11px] text-white outline-none"
+                  aria-label="TOTP setup secret"
+                />
+                <button
+                  type="button"
+                  disabled={securityBusy === '2fa'}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(totpSetup.secret);
+                      setTotpCopyFlash(true);
+                      window.setTimeout(() => setTotpCopyFlash(false), 2000);
+                    } catch {
+                      setSecurityMessage('Could not copy — select the key and copy manually.');
+                    }
+                  }}
+                  className="shrink-0 rounded-lg border border-sigflo-accent/35 bg-sigflo-accent/10 px-2.5 py-2 text-[11px] font-semibold text-sigflo-accent transition hover:bg-sigflo-accent/15 disabled:opacity-60"
+                >
+                  {totpCopyFlash ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            {totpSetup.otpauthUri ? (
+              <a
+                href={totpSetup.otpauthUri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex text-[11px] font-semibold text-sigflo-accent underline decoration-sigflo-accent/40 underline-offset-2 transition hover:decoration-sigflo-accent"
+              >
+                Open setup link (adds account in some apps)
+              </a>
+            ) : null}
+            <input
+              value={totpSetup.code}
+              onChange={(event) => setTotpSetup((prev) => (prev ? { ...prev, code: event.target.value.replace(/\D/g, '').slice(0, 6) } : prev))}
+              placeholder="Enter 6-digit code"
+              inputMode="numeric"
+              className="mt-2 w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
+            />
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={securityBusy === '2fa'}
+                onClick={() => void handleCancelTotpSetup()}
+                className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-sigflo-text"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={securityBusy === '2fa'}
+                onClick={() => void handleVerifyTotp()}
+                className="rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-200 disabled:opacity-60"
+              >
+                {securityBusy === '2fa' ? 'Verifying...' : 'Verify and enable'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {securityMessage ? (
+          <p className="mt-2 rounded-lg border border-white/[0.08] bg-black/20 px-2.5 py-2 text-[11px] text-sigflo-text">{securityMessage}</p>
+        ) : null}
+      </section>
+
+      {disconnectTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => {
+            if (!disconnectBusy) setDisconnectTarget(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-rose-400/25 bg-[#0B0B0B] p-4 shadow-[0_0_40px_-18px_rgba(255,91,123,0.45)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-rose-100">Disconnect {disconnectTarget.toUpperCase()}?</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-rose-100/85">
+              This will stop syncing balances and positions until you connect this exchange again.
+            </p>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={disconnectBusy}
+                onClick={() => setDisconnectTarget(null)}
+                className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-sigflo-text transition hover:bg-white/[0.07] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={disconnectBusy}
+                onClick={async () => {
+                  if (!disconnectTarget) return;
+                  setDisconnectBusy(true);
+                  try {
+                    await disconnect(disconnectTarget);
+                    await refreshSnapshots();
+                    setDisconnectTarget(null);
+                  } finally {
+                    setDisconnectBusy(false);
+                  }
+                }}
+                className="rounded-lg border border-rose-400/35 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/15 disabled:opacity-50"
+              >
+                {disconnectBusy ? 'Disconnecting...' : 'Confirm disconnect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function ToggleRow({
   label,
+  subtext,
   value,
   onChange,
 }: {
   label: string;
+  subtext: string;
   value: boolean;
   onChange: (next: boolean) => void;
 }) {
@@ -287,9 +747,12 @@ function ToggleRow({
     <button
       type="button"
       onClick={() => onChange(!value)}
-      className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2 text-left"
+      className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2 text-left transition hover:border-white/[0.12] hover:bg-white/[0.03]"
     >
-      <span className="text-sm text-white">{label}</span>
+      <div>
+        <p className="text-sm text-white">{label}</p>
+        <p className="mt-0.5 text-[11px] text-sigflo-muted">{subtext}</p>
+      </div>
       <span
         className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
           value ? 'border-emerald-400/35 bg-emerald-500/15 text-emerald-200' : 'border-white/10 bg-white/[0.04] text-sigflo-muted'
@@ -301,13 +764,37 @@ function ToggleRow({
   );
 }
 
-function ActionButton({ label }: { label: string }) {
+function SystemIndicator({ label, value, active }: { label: string; value: string; active?: boolean }) {
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
+      <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">{label}</p>
+      <p className={`mt-1 text-xs font-semibold ${active ? 'text-emerald-300' : 'text-sigflo-text'}`}>{value}</p>
+    </div>
+  );
+}
+
+function ActionButton({
+  label,
+  subtext,
+  onClick,
+  busy,
+  busyLabel,
+}: {
+  label: string;
+  subtext: string;
+  onClick: () => void;
+  busy?: boolean;
+  busyLabel?: string;
+}) {
   return (
     <button
       type="button"
-      className="w-full rounded-lg border border-white/[0.08] bg-black/20 px-3 py-2 text-left text-sm text-sigflo-text transition hover:bg-white/[0.04]"
+      onClick={onClick}
+      disabled={busy}
+      className="w-full rounded-lg border border-white/[0.08] bg-black/20 px-3 py-2 text-left text-sm text-sigflo-text transition hover:border-white/[0.14] hover:bg-white/[0.04] disabled:opacity-60"
     >
-      {label}
+      <p>{busy ? busyLabel ?? label : label}</p>
+      <p className="mt-0.5 text-[11px] text-sigflo-muted">{subtext}</p>
     </button>
   );
 }

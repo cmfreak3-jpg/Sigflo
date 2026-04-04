@@ -1,6 +1,25 @@
 import { supabase } from '@/lib/supabase';
 
-const API_BASE = import.meta.env.VITE_BACKEND_API_BASE?.trim() || 'http://localhost:8787/api';
+/**
+ * Backend mounts integrations and portfolio under `/api/...` (see backend `server.ts`).
+ * Must end with `/api` (no trailing slash). Common mistake: `http://localhost:8787` → 404 on `/integrations/...`.
+ */
+function resolveApiBase(): string {
+  const raw = import.meta.env.VITE_BACKEND_API_BASE?.trim();
+  if (raw) {
+    const base = raw.replace(/\/+$/, '');
+    if (/^https?:\/\/[^/]+$/i.test(base)) {
+      return `${base}/api`;
+    }
+    return base;
+  }
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  return 'http://localhost:8787/api';
+}
+
+const API_BASE = resolveApiBase();
 const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID?.trim();
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
