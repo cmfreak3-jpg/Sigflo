@@ -10,13 +10,15 @@ Sigflo is a frontend-only React + TypeScript + Vite SPA for crypto trading signa
 
 | Service | How to run | Default URL |
 |---|---|---|
-| Vite Dev Server | `npm run dev` | `http://localhost:5173` |
+| Vite Dev Server (UI only) | `npm run dev:vite` | `http://localhost:5173` |
+| Netlify Dev (UI + AI function) | `npm run dev` | `http://localhost:3999` |
 
 ### Key commands
 
 See `package.json` scripts:
 
-- **Dev server:** `npm run dev`
+- **Dev server (UI only, recommended for Cloud):** `npm run dev:vite`
+- **Dev server (full Netlify Dev):** `npm run dev` — requires `netlify` CLI (`npm i -g netlify-cli`)
 - **Build (tsc + vite):** `npm run build`
 - **Lint:** `npm run lint`
 - **Preview prod build:** `npm run preview`
