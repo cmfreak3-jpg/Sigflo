@@ -31,3 +31,7 @@ See `package.json` scripts:
 - The app uses `import.meta.env.DEV` (built-in Vite flag) only — no custom `.env` files are needed.
 - **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: 'all'` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
 - **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. It falls back to mock data gracefully — this is expected behavior.
+
+### Trade chart plot height (do not duplicate)
+
+Trade screen chart **expanded/collapsed** plot heights (px) live in **`src/config/tradeChartHeights.ts`** only. `ChartHeader`, `TradeScreen`, and `PriceChartCard` import those constants — **do not** reintroduce hardcoded `260`/`120`/`116`/`56` etc. in those files (values drifted repeatedly in the past).

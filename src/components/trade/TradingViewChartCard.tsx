@@ -51,7 +51,7 @@ export function TradingViewChartCard({ symbol, interval }: Props) {
           </div>
         ) : null}
         {timedOut ? (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-sigflo-bg/95 px-4 text-center">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-sigflo-bg/95 px-2.5 text-center">
             <p className="text-xs text-sigflo-muted">
               Embed is blocked in this environment. Open TradingView in a new tab instead.
             </p>

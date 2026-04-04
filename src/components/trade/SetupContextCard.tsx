@@ -27,9 +27,9 @@ export function SetupContextCard({ signal }: { signal: CryptoSignal }) {
     signal.riskTag === 'High Risk' ? 'text-rose-400' : signal.riskTag === 'Low Risk' ? 'text-emerald-400' : 'text-sigflo-muted';
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-2.5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2 text-sm">
           <span className="text-sigflo-muted">Setup: <span className={`font-bold ${setupColor}`}>{setupLabel(signal.setupScore)}</span></span>
           <span className="text-sigflo-muted">Risk: <span className={`font-bold ${riskColor}`}>{riskShort(signal.riskTag)}</span></span>
           <span className="text-sigflo-muted">Score: <span className="font-bold text-white">{signal.setupScore}</span></span>

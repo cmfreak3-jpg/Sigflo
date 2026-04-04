@@ -24,7 +24,7 @@ export type TradeSummaryModel = {
 export function TradeSummaryCard({ model, market }: { model: TradeSummaryModel; market: MarketMode }) {
   const livePnlClass = model.livePnlUsd >= 0 ? 'text-emerald-400' : 'text-rose-400';
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4 space-y-2">
+    <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-2.5 space-y-2">
       <div className="grid grid-cols-3 gap-2 pb-1">
         <div className="rounded-lg border border-white/[0.06] bg-black/20 px-2 py-1.5">
           <p className="text-[10px] text-sigflo-muted">Position</p>
