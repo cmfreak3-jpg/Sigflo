@@ -84,7 +84,7 @@ function getTradeScore(
 
 export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): DerivedTradeMetrics {
   const amountUsedUsd = clamp(inputs.amountUsd, 0, model.balanceUsd);
-  const leverage = clamp(inputs.leverage, 1, 50);
+  const leverage = clamp(inputs.leverage, 1, 200);
   const positionSizeUsd = amountUsedUsd * leverage;
   const walletUsedPct = model.balanceUsd > 0 ? (amountUsedUsd / model.balanceUsd) * 100 : 0;
 
@@ -131,8 +131,8 @@ export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): 
       100,
     ),
   );
+  /** Supplementary bullets only — `primaryMessage` is shown separately in the UI. */
   const warnings: string[] = [];
-  warnings.push(primaryMessage);
   if (walletUsedPct > 20) warnings.push(`Wallet impact is ${walletUsedPct.toFixed(1)}% of available balance.`);
   if (oversizingRelativeToSetup) warnings.push(`Sizing exceeds setup-adjusted range (${recommendedUsagePct.toFixed(1)}%).`);
   if (leverage > 20) warnings.push('Leverage is above the safer operating range for this setup.');

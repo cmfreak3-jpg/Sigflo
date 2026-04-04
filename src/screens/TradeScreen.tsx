@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getMockTradeForPair, getMockTradeForSignalId } from '@/data/mockTrade';
 import { mockSignals } from '@/data/mockSignals';
 import { ChartHeader } from '@/components/trade/ChartHeader';
+import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
+import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
 import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
-import { TradeActionBar } from '@/components/trade/TradeActionBar';
+import { MarketToggle } from '@/components/trade/MarketToggle';
 import { TradeControls } from '@/components/trade/TradeControls';
-import { TRADE_CHART_PLOT_COLLAPSED_PX, TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
+import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
+import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { managePnlFromPrices, parseManageTradeContext } from '@/lib/manageTradeContext';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import { deriveMarketStatus, parseMarketStatusQuery } from '@/lib/marketScannerRows';
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
+import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
+import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
 import { deriveTradeMetrics } from '@/lib/tradeRisk';
 import type { SymbolTicker } from '@/types/market';
 import type { CryptoSignal, SetupScoreLabel, SignalRiskTag, SignalSetupTag } from '@/types/signal';
@@ -47,6 +52,17 @@ export function TradeScreen() {
   const toastClearRef = useRef<number>(0);
   const [execFlash, setExecFlash] = useState<'long' | 'short' | null>(null);
   const execFlashClearRef = useRef<number>(0);
+  /** User must pick Short/Long under Futures/Spot before Open Short / Open Long unlock. */
+  const [tradeDirectionPicked, setTradeDirectionPicked] = useState(false);
+  const [chartDockOpen, setChartDockOpen] = useState(() => {
+    const saved = window.localStorage.getItem('sigflo.trade.chartDockOpen');
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+    return false;
+  });
+  useEffect(() => {
+    window.localStorage.setItem('sigflo.trade.chartDockOpen', chartDockOpen ? '1' : '0');
+  }, [chartDockOpen]);
   const [tick, setTick] = useState(0);
   const appliedPortfolioDefaults = useRef<string | null>(null);
   useEffect(() => {
@@ -210,6 +226,178 @@ export function TradeScreen() {
     [metrics.riskSummary.tradeScore, selectedSignal.setupScore, side],
   );
 
+  const exitAutomationScopeKey = useMemo(() => {
+    if (isManageMode && manageCtx) {
+      return `pos:${manageCtx.pair}:${manageCtx.entryPrice}:${manageCtx.side}`;
+    }
+    return `pre:${signalId}:${mergedModel.pair}`;
+  }, [isManageMode, manageCtx, signalId, mergedModel.pair]);
+
+  const exitAuto = useExitAutomation(exitAutomationScopeKey);
+
+  const loggedModeRef = useRef<typeof exitAuto.mode | null>(null);
+  const loggedStratRef = useRef<typeof exitAuto.strategy | null>(null);
+  const prevEffStateRef = useRef<string | null>(null);
+  const prevAutoStateRef = useRef<'hold' | 'trim' | 'exit' | null>(null);
+  const prevPnlForSafeguardRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    loggedModeRef.current = null;
+    loggedStratRef.current = null;
+    prevEffStateRef.current = null;
+    prevAutoStateRef.current = null;
+    prevPnlForSafeguardRef.current = null;
+  }, [exitAutomationScopeKey]);
+
+  const exitFlow = useMemo(() => {
+    if (isManageMode) {
+      if (!manageCtx || !managePnlDisplay) return null;
+      const mark =
+        typeof markForManage === 'number' && Number.isFinite(markForManage)
+          ? markForManage
+          : mergedModel.entry;
+      return resolveExitGuidanceFlow({
+        variant: 'manage',
+        side: manageCtx.side,
+        entry: manageCtx.entryPrice,
+        mark,
+        stop: modelForMetrics.stop,
+        target: modelForMetrics.target,
+        trendAlignment: selectedSignal.scoreBreakdown.trendAlignment,
+        momentumQuality: selectedSignal.scoreBreakdown.momentumQuality,
+        pnlPct: managePnlDisplay.pnlPct,
+        strategyPreset: exitAuto.strategy,
+        safeguards: exitAuto.safeguards,
+        exitAiMode: exitAuto.mode,
+      });
+    }
+    return resolveExitGuidanceFlow({
+      variant: 'trade',
+      side,
+      entry: modelForMetrics.entry,
+      estimatedPnlPct: liveUnrealized.movePct,
+      stop: modelForMetrics.stop,
+      target: modelForMetrics.target,
+      trendAlignment: selectedSignal.scoreBreakdown.trendAlignment,
+      momentumQuality: selectedSignal.scoreBreakdown.momentumQuality,
+      strategyPreset: exitAuto.strategy,
+      safeguards: exitAuto.safeguards,
+      exitAiMode: exitAuto.mode,
+    });
+  }, [
+    isManageMode,
+    manageCtx,
+    managePnlDisplay,
+    markForManage,
+    mergedModel.entry,
+    modelForMetrics.stop,
+    modelForMetrics.target,
+    side,
+    liveUnrealized.movePct,
+    selectedSignal.scoreBreakdown.trendAlignment,
+    selectedSignal.scoreBreakdown.momentumQuality,
+    exitAuto.mode,
+    exitAuto.strategy,
+    exitAuto.safeguards,
+  ]);
+
+  useEffect(() => {
+    if (loggedModeRef.current === null) {
+      loggedModeRef.current = exitAuto.mode;
+      return;
+    }
+    if (loggedModeRef.current !== exitAuto.mode) {
+      exitAuto.pushActivity({
+        kind: 'mode_change',
+        message: `Switched to ${EXIT_AI_MODE_LABEL[exitAuto.mode]}`,
+      });
+      loggedModeRef.current = exitAuto.mode;
+    }
+  }, [exitAuto.mode, exitAuto.pushActivity]);
+
+  useEffect(() => {
+    if (loggedStratRef.current === null) {
+      loggedStratRef.current = exitAuto.strategy;
+      return;
+    }
+    if (loggedStratRef.current !== exitAuto.strategy) {
+      exitAuto.pushActivity({
+        kind: 'strategy_change',
+        message: `Exit behavior set to ${EXIT_STRATEGY_LABEL[exitAuto.strategy]}`,
+      });
+      loggedStratRef.current = exitAuto.strategy;
+    }
+  }, [exitAuto.strategy, exitAuto.pushActivity]);
+
+  useEffect(() => {
+    if (!exitFlow) return;
+    const s = exitFlow.effective.state;
+    if (prevEffStateRef.current === null) {
+      prevEffStateRef.current = s;
+      return;
+    }
+    if (prevEffStateRef.current !== s) {
+      exitAuto.pushActivity({
+        kind: 'exit_state',
+        message: `Exit state changed to ${s.toUpperCase()}`,
+      });
+      prevEffStateRef.current = s;
+    }
+  }, [exitFlow, exitAuto.pushActivity]);
+
+  useEffect(() => {
+    if (!exitFlow) return;
+    const maxL = exitAuto.safeguards.maxLossPct;
+    const pnl = exitFlow.pnlPct;
+    const prev = prevPnlForSafeguardRef.current;
+    const crossed = prev !== null && prev > -maxL && pnl <= -maxL;
+    if (crossed) {
+      exitAuto.pushActivity({
+        kind: 'safeguard',
+        message: 'Max loss safeguard crossed — favoring protective exit.',
+      });
+    }
+    prevPnlForSafeguardRef.current = pnl;
+  }, [exitFlow, exitAuto.safeguards.maxLossPct, exitAuto.pushActivity]);
+
+  useEffect(() => {
+    if (!exitFlow) {
+      prevAutoStateRef.current = null;
+      return;
+    }
+    if (exitAuto.mode !== 'auto') {
+      prevAutoStateRef.current = exitFlow.effective.state;
+      return;
+    }
+    const curr = exitFlow.effective.state;
+    const prev = prevAutoStateRef.current;
+    if (prev !== null && prev !== curr) {
+      if (curr === 'trim' && prev === 'hold' && exitAuto.safeguards.allowPartialExits) {
+        exitAuto.pushActivity({
+          kind: 'auto_trim',
+          message: `Closed 50% at ${formatQuoteNumber(exitFlow.lastPrice)} (simulated)`,
+        });
+      }
+      if (
+        curr === 'exit' &&
+        exitAuto.safeguards.allowFullAutoClose &&
+        (prev === 'hold' || prev === 'trim')
+      ) {
+        exitAuto.pushActivity({
+          kind: 'auto_close',
+          message: `Remaining position exited at ${formatQuoteNumber(exitFlow.lastPrice)} (simulated)`,
+        });
+      }
+    }
+    prevAutoStateRef.current = curr;
+  }, [
+    exitFlow,
+    exitAuto.mode,
+    exitAuto.safeguards.allowPartialExits,
+    exitAuto.safeguards.allowFullAutoClose,
+    exitAuto.pushActivity,
+  ]);
+
   const flashTradeToast = useCallback((message: string) => {
     setTradeToast(message);
     window.clearTimeout(toastClearRef.current);
@@ -239,16 +427,6 @@ export function TradeScreen() {
     chartInterval === 'D' ? '1D' : chartInterval === 'W' ? '1W' : chartInterval === '60' ? '1h' : chartInterval === '240' ? '4h' : `${chartInterval}m`;
 
   const tradeScrollRef = useRef<HTMLDivElement>(null);
-  const [chartHeaderCollapsed, setChartHeaderCollapsed] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = tradeScrollRef.current;
-    if (!el) return;
-    const onScroll = () => setChartHeaderCollapsed(el.scrollTop > 50);
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [isManageMode, signalId]);
 
   return (
     <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#050505] text-white">
@@ -367,36 +545,19 @@ export function TradeScreen() {
             )}
           </div>
         </header>
+        <div className="mx-auto max-w-lg px-3 pb-2">
+          <MarketToggle value={market} onChange={setMarket} />
+        </div>
+      </div>
 
-        <ChartHeader
-          collapsed={chartHeaderCollapsed}
-          plotExpandedPx={TRADE_CHART_PLOT_EXPANDED_PX}
-          plotCollapsedPx={TRADE_CHART_PLOT_COLLAPSED_PX}
-          model={mergedModel}
-          market={market}
-          intervalLabel={intervalLabel}
-          loadingInterval={live.loadingInterval}
-          liveUpdatedAt={live.lastUpdateTs}
-          change24hPct={mergedModel.change24hPct}
-          timeframeOptions={TRADE_CHART_INTERVAL_OPTIONS}
-          chartInterval={chartInterval}
-          onChartIntervalChange={(v) => {
-            setChartInterval(v);
-            window.localStorage.setItem('sigflo.trade.chartInterval', v);
-          }}
-          exchangeStyleHero={!isManageMode}
-          heroPairLabel={isManageMode ? mergedModel.pair : undefined}
-          metaCaption={
-            isManageMode
-              ? undefined
-              : market === 'futures'
-                ? 'Perpetual · Funding +0.010%'
-                : 'Spot · No funding'
-          }
-        />
+      <div
+        ref={tradeScrollRef}
+        className="trade-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+      >
         {!isManageMode ? (
           <TradeChartScenarioStrip
             mode="trade"
+            side={side}
             estimatedPnlUsd={liveUnrealized.pnlUsd}
             estimatedPnlPct={liveUnrealized.movePct}
             targetProfitUsd={metrics.targetProfitUsd}
@@ -415,6 +576,11 @@ export function TradeScreen() {
             isFutures={market === 'futures'}
             tradeScore={metrics.riskSummary.tradeScore}
             setupScore={selectedSignal.setupScore}
+            trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
+            momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
+            exitAiMode={exitAuto.mode}
+            exitStrategyPreset={exitAuto.strategy}
+            automationSafeguards={exitAuto.safeguards}
           />
         ) : managePnlDisplay && manageCtx ? (
           <TradeChartScenarioStrip
@@ -423,23 +589,57 @@ export function TradeScreen() {
             pnlPct={managePnlDisplay.pnlPct}
             pair={manageCtx.pair}
             entry={manageCtx.entryPrice}
-            mark={markForManage}
+            mark={
+              typeof markForManage === 'number' && Number.isFinite(markForManage)
+                ? markForManage
+                : mergedModel.entry
+            }
             sizeLabel={manageStripSizeLabel(manageCtx)}
             side={manageCtx.side}
             riskReward={mergedModel.riskReward}
+            stop={modelForMetrics.stop}
+            target={modelForMetrics.target}
+            trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
+            momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
+            exitAiMode={exitAuto.mode}
+            exitStrategyPreset={exitAuto.strategy}
+            automationSafeguards={exitAuto.safeguards}
           />
         ) : null}
-      </div>
 
-      <div
-        ref={tradeScrollRef}
-        className="trade-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
-      >
+        <div className="mx-auto w-full max-w-lg space-y-2 px-1.5 pt-2">
+          {exitAuto.mode === 'assisted' &&
+          exitFlow &&
+          (exitFlow.effective.state === 'trim' || exitFlow.effective.state === 'exit') ? (
+            <AssistedExitConfirmBar
+              headline={exitFlow.effective.headline}
+              detail={exitFlow.effective.action}
+              onConfirm={() => {
+                exitAuto.pushActivity({
+                  kind: 'assisted_ready',
+                  message: `Confirmed prepared exit (${exitFlow.effective.headline})`,
+                });
+                flashTradeToast('Prepared exit acknowledged — complete on your exchange.');
+              }}
+            />
+          ) : null}
+          <ExitAutomationControls
+            mode={exitAuto.mode}
+            onModeChange={exitAuto.setMode}
+            strategy={exitAuto.strategy}
+            onStrategyChange={exitAuto.setStrategy}
+            safeguards={exitAuto.safeguards}
+            onSafeguardsChange={exitAuto.setSafeguards}
+            activity={exitAuto.activity}
+            onClearActivity={exitAuto.clearActivity}
+            compactActivity={!isManageMode}
+          />
+        </div>
+
         <TradeControls
           manageDataInvalid={manageDataInvalid}
           ticketIntent={ticketIntent}
           market={market}
-          onMarketChange={setMarket}
           mergedModel={mergedModel}
           isManageMode={isManageMode}
           manageCtx={manageCtx}
@@ -459,45 +659,112 @@ export function TradeScreen() {
           onTargetStrChange={setTargetStr}
           metrics={metrics}
           estFeeUsd={estFeeUsd}
+          onTradeSideChange={(s) => {
+            setSide(s);
+            setTradeDirectionPicked(true);
+          }}
+          tradeExecute={
+            !isManageMode
+              ? {
+                  canExecute,
+                  directionPicked: tradeDirectionPicked,
+                  flashSide: execFlash,
+                  onOpenShort: () => executeTrade('short'),
+                  onOpenLong: () => executeTrade('long'),
+                }
+              : undefined
+          }
         />
-        {!isManageMode ? (
-          <TradeActionBar
-            market={market}
-            canExecute={canExecute}
-            flashSide={execFlash}
-            onSellShort={() => executeTrade('short')}
-            onBuyLong={() => executeTrade('long')}
-          />
-        ) : null}
       </div>
 
-      {isManageMode ? (
-        <div className="sticky bottom-0 z-30 shrink-0 border-t border-white/[0.08] bg-black/80 px-2 py-1.5 backdrop-blur-xl">
-          <div className="mx-auto max-w-lg space-y-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-rose-400/35 bg-rose-500/[0.12] py-3.5 text-base font-bold text-rose-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition hover:bg-rose-500/18 active:scale-[0.98]"
-            >
-              Close Position
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-2xl bg-sigflo-accent py-3.5 text-base font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.98]"
-            >
-              Add to Position
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-semibold text-sigflo-text transition hover:bg-white/[0.07] active:scale-[0.98]"
-            >
-              Reduce Position
-            </button>
-            <p className="text-center text-[10px] leading-relaxed text-sigflo-muted">
-              Executes on your exchange — Sigflo is your control view.
-            </p>
+      <div className="sticky bottom-0 z-30 shrink-0 border-t border-white/10 bg-black/[0.92] backdrop-blur-xl">
+        <div className="divide-y divide-white/[0.08]">
+          <div className="mx-auto w-full max-w-lg">
+              <button
+                type="button"
+                onClick={() => setChartDockOpen((o) => !o)}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.05]"
+                aria-expanded={chartDockOpen}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">Price chart</span>
+                  <span className="ml-2 text-xs font-semibold text-white">{intervalLabel}</span>
+                  {!chartDockOpen && mergedModel.lastPrice != null && Number.isFinite(mergedModel.lastPrice) ? (
+                    <span className="ml-2 font-mono text-sm font-semibold text-cyan-200/95">
+                      ${formatQuoteNumber(mergedModel.lastPrice)}
+                    </span>
+                  ) : null}
+                </div>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className={`shrink-0 text-sigflo-muted transition-transform duration-200 ${chartDockOpen ? 'rotate-180' : ''}`}
+                  aria-hidden
+                >
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            {chartDockOpen ? (
+              <ChartHeader
+                collapsed={false}
+                plotExpandedPx={TRADE_CHART_PLOT_EXPANDED_PX}
+                model={mergedModel}
+                market={market}
+                intervalLabel={intervalLabel}
+                loadingInterval={live.loadingInterval}
+                liveUpdatedAt={live.lastUpdateTs}
+                change24hPct={mergedModel.change24hPct}
+                timeframeOptions={TRADE_CHART_INTERVAL_OPTIONS}
+                chartInterval={chartInterval}
+                onChartIntervalChange={(v) => {
+                  setChartInterval(v);
+                  window.localStorage.setItem('sigflo.trade.chartInterval', v);
+                }}
+                exchangeStyleHero={!isManageMode}
+                heroPairLabel={isManageMode ? mergedModel.pair : undefined}
+                metaCaption={
+                  isManageMode
+                    ? undefined
+                    : market === 'futures'
+                      ? 'PERP · Funding +0.010%'
+                      : 'Spot · No funding'
+                }
+                className="pb-2"
+              />
+            ) : null}
           </div>
+
+          {isManageMode ? (
+            <div className="px-2 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+              <div className="mx-auto max-w-lg space-y-2">
+                <button
+                  type="button"
+                  className="w-full rounded-2xl border border-rose-400/35 bg-rose-500/[0.12] py-3.5 text-base font-bold text-rose-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition hover:bg-rose-500/18 active:scale-[0.98]"
+                >
+                  Close Position
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-2xl bg-sigflo-accent py-3.5 text-base font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.98]"
+                >
+                  Add to Position
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-2xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-semibold text-sigflo-text transition hover:bg-white/[0.07] active:scale-[0.98]"
+                >
+                  Reduce Position
+                </button>
+                <p className="text-center text-[10px] leading-relaxed text-sigflo-muted">
+                  Executes on your exchange — Sigflo is your control view.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { formatQuoteNumber, formatQuoteUsd } from '@/lib/formatQuote';
@@ -112,11 +113,14 @@ export function PriceChartCard({
   chartPlotHeightPx?: number;
   /** Exchange-style layout: caption, large price + 24h delta, underline timeframe tabs (pair title omitted). */
   exchangeStyleHero?: boolean;
-  /** e.g. "Perpetual · Funding +0.010%" */
+  /** e.g. "PERP · Funding +0.010%" (shown beside chart overlay toggles when `exchangeStyleHero`). */
   metaCaption?: string;
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
+  /** Exchange trade header: price/TF row should meet the plot with no extra chrome gap. */
+  const exchangeTfHero =
+    Boolean(exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange);
   const showLiquidation = market === 'futures';
   const [showVolume, setShowVolume] = useState(true);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'flat'>('flat');
@@ -468,23 +472,40 @@ export function PriceChartCard({
       style={{ ['--chart-h-desktop' as string]: `${chartHeightPx}px` }}
     >
       {exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
-        <div className="mb-0 space-y-0">
-          <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
-            <div className="min-w-0">
-              <p
-                className={`text-xl font-bold tabular-nums tracking-tight transition-colors md:text-2xl ${
-                  priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
-                }`}
-              >
-                {formatQuoteUsd(model.lastPrice)}
-              </p>
-              <p className={`mt-0.5 text-xs font-semibold tabular-nums leading-tight md:text-sm ${changeClass}`}>
-                {change >= 0 ? '+' : '−'}
-                {abs24hFmt} ({change >= 0 ? '+' : ''}
-                {change.toFixed(2)}%)
-              </p>
+        <div className="mb-0 flex min-w-0 w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
+          <div className="flex min-w-0 shrink-0 items-baseline gap-2 md:gap-[4.5px]">
+            <span
+              className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
+                priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
+              }`}
+            >
+              {formatQuoteUsd(model.lastPrice)}
+            </span>
+            <span className={`text-[7px] font-medium tabular-nums leading-tight md:text-[8px] ${changeClass}`}>
+              {change >= 0 ? '+' : '−'}
+              {abs24hFmt} ({change >= 0 ? '+' : ''}
+              {change.toFixed(2)}%)
+            </span>
+          </div>
+          <div className="flex min-w-0 shrink-0 items-center justify-end gap-[3.5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-[4.5px]">
+            <div className="flex w-max shrink-0 items-center gap-[3.5px] md:gap-[4.5px]">
+              {timeframeOptions.map((intv) => (
+                <button
+                  key={intv.value}
+                  type="button"
+                  onClick={() => onChartIntervalChange(intv.value)}
+                  className={`shrink-0 rounded-sm px-[4px] py-[2px] text-[6px] font-medium uppercase leading-none tracking-wide transition md:px-[5px] md:py-[2.5px] md:text-[7px] ${
+                    chartInterval === intv.value
+                      ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/25'
+                      : 'bg-white/[0.04] text-sigflo-muted hover:bg-white/[0.07] hover:text-sigflo-text'
+                  }`}
+                >
+                  {intv.label}
+                </button>
+              ))}
             </div>
-            <div className="shrink-0 border-l border-white/[0.08] pl-2">{perpTimeCluster}</div>
+            <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
+            <div className="flex shrink-0 items-center">{perpTimeCluster}</div>
           </div>
         </div>
       ) : heroPairLabel ? (
@@ -597,40 +618,20 @@ export function PriceChartCard({
           </div>
         </div>
       )}
-      {exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
-        <div className="mt-0 flex min-w-0 items-center justify-between gap-2 border-b border-white/[0.06] bg-black/20 px-2 py-1 md:px-2.5 md:py-1">
-          <div className="min-w-0 flex-1">
-            {metaCaption ? (
-              <p className="min-w-0 text-[9px] font-medium leading-snug tracking-wide text-sigflo-muted/75 md:text-[10px]">
-                {metaCaption}
-              </p>
-            ) : null}
-          </div>
-          <div className="max-w-[min(100%,14rem)] shrink-0 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="ml-auto flex w-max items-center justify-end gap-2">
-              {timeframeOptions.map((intv) => (
-                <button
-                  key={intv.value}
-                  type="button"
-                  onClick={() => onChartIntervalChange(intv.value)}
-                  className={`shrink-0 border-b pb-0.5 text-[8px] font-medium uppercase tracking-wider text-sigflo-muted/55 transition hover:text-sigflo-muted/90 md:text-[9px] ${
-                    chartInterval === intv.value
-                      ? 'border-emerald-500/35 text-sigflo-muted/95'
-                      : 'border-transparent'
-                  }`}
-                >
-                  {intv.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : exchangeStyleHero && metaCaption ? (
+      {exchangeStyleHero &&
+      metaCaption &&
+      !(showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange) ? (
         <p className="mt-0 border-b border-white/[0.06] bg-black/20 px-2 py-1 text-[9px] font-medium leading-snug tracking-wide text-sigflo-muted/75 md:px-2.5 md:py-1 md:text-[10px]">
           {metaCaption}
         </p>
       ) : null}
-      <div className="mt-0 min-h-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/30 md:rounded-xl">
+      <div
+        className={`mt-0 min-h-0 overflow-hidden ${
+          exchangeTfHero
+            ? 'rounded-t-none rounded-b-lg border border-t-0 border-white/[0.08] bg-black/20 md:rounded-b-xl'
+            : 'rounded-lg border border-white/[0.08] bg-black/30 md:rounded-xl'
+        }`}
+      >
         <div
           ref={chartContainerRef}
           className={
@@ -640,43 +641,54 @@ export function PriceChartCard({
           }
           style={chartPlotHeightPx != null ? { height: chartPlotHeightPx } : undefined}
         />
-        <div className="flex flex-wrap items-center gap-[3.5px] border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:px-[5.5px] md:py-[4.5px] md:text-[8px]">
-          <button
-            type="button"
-            onClick={() => setShowVolume((v) => !v)}
-            className={`rounded-sm px-[5.5px] py-[3.5px] transition md:px-[7px] md:py-[3px] ${
-              showVolume
-                ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/30'
-                : 'bg-white/[0.04] text-sigflo-muted'
-            }`}
-            aria-pressed={showVolume}
-            aria-label="Toggle volume bars"
-          >
-            Vol
-          </button>
-          {(Object.keys(levelStyles) as LevelKey[])
-            .filter((key) => (key === 'liquidation' ? showLiquidation : true))
-            .map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() =>
-                  setVisibleLevels((prev) => ({
-                    ...prev,
-                    [key]: !prev[key],
-                  }))
-                }
-                className={`rounded-sm px-[5.5px] py-[3.5px] transition md:px-[7px] md:py-[3px] ${
-                  visibleLevels[key]
-                    ? `${levelStyles[key].labelClass} bg-white/[0.08] ring-1 ring-white/15`
-                    : 'bg-white/[0.03] text-sigflo-muted'
-                }`}
-                aria-pressed={visibleLevels[key]}
-                aria-label={`Toggle ${levelStyles[key].label} level`}
-              >
-                {levelStyles[key].label}
-              </button>
-            ))}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:text-[8px]">
+            <button
+              type="button"
+              onClick={() => setShowVolume((v) => !v)}
+              className={`rounded-sm px-[5.5px] py-[3.5px] transition md:px-[7px] md:py-[3px] ${
+                showVolume
+                  ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/30'
+                  : 'bg-white/[0.04] text-sigflo-muted'
+              }`}
+              aria-pressed={showVolume}
+              aria-label="Toggle volume bars"
+            >
+              Vol
+            </button>
+            {(Object.keys(levelStyles) as LevelKey[])
+              .filter((key) => (key === 'liquidation' ? showLiquidation : true))
+              .map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() =>
+                    setVisibleLevels((prev) => ({
+                      ...prev,
+                      [key]: !prev[key],
+                    }))
+                  }
+                  className={`rounded-sm px-[5.5px] py-[3.5px] transition md:px-[7px] md:py-[3px] ${
+                    visibleLevels[key]
+                      ? `${levelStyles[key].labelClass} bg-white/[0.08] ring-1 ring-white/15`
+                      : 'bg-white/[0.03] text-sigflo-muted'
+                  }`}
+                  aria-pressed={visibleLevels[key]}
+                  aria-label={`Toggle ${levelStyles[key].label} level`}
+                >
+                  {levelStyles[key].label}
+                </button>
+              ))}
+            {exchangeStyleHero && metaCaption ? (
+              <>
+                <span className="h-3 w-px shrink-0 self-center bg-white/[0.12]" aria-hidden />
+                <span className="shrink-0 whitespace-nowrap text-[7px] font-medium leading-tight text-sigflo-muted md:text-[8px]">
+                  {metaCaption}
+                </span>
+              </>
+            ) : null}
+          </div>
+          <MarketStatsRow model={model} variant="compact" />
         </div>
       </div>
     </Card>

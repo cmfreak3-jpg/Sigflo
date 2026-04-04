@@ -18,11 +18,31 @@ export default {
           loss: '#f87171',
           lossDim: 'rgba(248,113,113,0.12)',
         },
+        /** Marketing landing page palette */
+        landing: {
+          bg: '#0F1115',
+          /** Mid-band sections — slightly lifted from hero */
+          mid: '#11151A',
+          surface: '#171A20',
+          card: '#1E222A',
+          accent: '#00C878',
+          'accent-hi': '#00E08A',
+          'accent-dim': 'rgba(0, 200, 120, 0.12)',
+          'accent-glow': 'rgba(0, 200, 120, 0.35)',
+          text: '#F5F7FA',
+          muted: 'rgba(245, 247, 250, 0.72)',
+          border: 'rgba(255, 255, 255, 0.08)',
+        },
       },
       boxShadow: {
         glow: '0 0 40px -12px rgba(0,255,200,0.25)',
         'glow-sm': '0 0 24px -8px rgba(0,255,200,0.18)',
         card: '0 8px 32px rgba(0,0,0,0.45)',
+        'landing-glow': '0 0 80px -20px rgba(0, 200, 120, 0.35)',
+        'landing-glow-sm': '0 0 48px -16px rgba(0, 200, 120, 0.22)',
+        'landing-card': '0 12px 40px rgba(0, 0, 0, 0.4)',
+        'landing-card-strong':
+          '0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06) inset',
       },
       fontFamily: {
         sans: [

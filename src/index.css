@@ -12,6 +12,52 @@
   ::selection {
     @apply bg-[rgba(0,255,200,0.25)] text-white;
   }
+
+  /**
+   * Dark-theme scrollbars (Win/Chrome/Edge/Safari + Firefox).
+   * Hides arrow buttons on WebKit for a cleaner premium look.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.04);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 100px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 100px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 255, 200, 0.28);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: rgba(0, 255, 200, 0.38);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 .sigflo-number-input::-webkit-outer-spin-button,
@@ -43,6 +89,67 @@
   animation: sigflo-entry-pulse 2.2s ease-in-out infinite;
   display: inline-block;
   will-change: transform, opacity;
+}
+
+/* Trade scenario strip — chevron: slow, soft breathe (calm affordance). */
+@keyframes sigflo-scenario-chevron-fade {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes sigflo-scenario-chevron-bounce {
+  0%,
+  100% {
+    transform: scale(0.97);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.sigflo-scenario-chevron-pulse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: sigflo-scenario-chevron-fade 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: center;
+  will-change: opacity;
+}
+
+.sigflo-scenario-chevron-pulse svg {
+  transform-origin: center;
+  animation: sigflo-scenario-chevron-bounce 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  will-change: transform;
+}
+
+.sigflo-scenario-chevron-pulse-open {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+}
+
+.sigflo-scenario-chevron-pulse-open svg {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-scenario-chevron-pulse,
+  .sigflo-scenario-chevron-pulse svg {
+    animation: none;
+  }
+  .sigflo-scenario-chevron-pulse {
+    opacity: 1;
+  }
+  .sigflo-scenario-chevron-pulse svg {
+    transform: none;
+  }
 }
 
 @keyframes sigflo-trigger-card-in {

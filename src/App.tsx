@@ -12,6 +12,7 @@ import PortfolioScreen from '@/screens/PortfolioScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
+import LandingPage from '@/screens/LandingPage';
 
 export default function App() {
   const location = useLocation();
@@ -31,7 +32,7 @@ export default function App() {
   return (
     <ErrorBoundary key={location.pathname}>
     <Routes>
-      <Route path="/" element={<Navigate to="/feed" replace />} />
+      <Route path="/" element={<LandingPage />} />
       <Route element={<AppShell />}>
         <Route path="/feed" element={<FeedScreen />} />
         <Route path="/markets" element={<MarketsScreen />} />

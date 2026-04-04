@@ -1,8 +1,7 @@
 import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
-import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
-import { MarketToggle } from '@/components/trade/MarketToggle';
 import { OrderInputsCard } from '@/components/trade/OrderInputsCard';
 import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
+import { TradeActionBar } from '@/components/trade/TradeActionBar';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
 import type { MarketRowStatus } from '@/types/markets';
@@ -32,7 +31,6 @@ export type TradeControlsProps = {
   manageDataInvalid: boolean;
   ticketIntent: string | null;
   market: MarketMode;
-  onMarketChange: (m: MarketMode) => void;
   mergedModel: TradeViewModel;
   isManageMode: boolean;
   manageCtx: ManageTradePositionContext | null;
@@ -52,6 +50,16 @@ export type TradeControlsProps = {
   onTargetStrChange: (s: string) => void;
   metrics: DerivedTradeMetrics;
   estFeeUsd: number;
+  /** New-trade only: Short/Long under Futures/Spot. */
+  onTradeSideChange?: (s: TradeSide) => void;
+  /** New-trade only: Open Short / Long — rendered above the scanner panel. */
+  tradeExecute?: {
+    canExecute: boolean;
+    directionPicked: boolean;
+    flashSide?: 'long' | 'short' | null;
+    onOpenShort: () => void;
+    onOpenLong: () => void;
+  };
 };
 
 export function TradeControls(props: TradeControlsProps) {
@@ -59,7 +67,6 @@ export function TradeControls(props: TradeControlsProps) {
     manageDataInvalid,
     ticketIntent,
     market,
-    onMarketChange,
     mergedModel,
     isManageMode,
     manageCtx,
@@ -79,6 +86,8 @@ export function TradeControls(props: TradeControlsProps) {
     onTargetStrChange,
     metrics,
     estFeeUsd,
+    onTradeSideChange,
+    tradeExecute,
   } = props;
 
   return (
@@ -99,13 +108,43 @@ export function TradeControls(props: TradeControlsProps) {
         </p>
       ) : null}
 
-      <MarketToggle value={market} onChange={onMarketChange} />
-
-      <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex min-w-max items-center pr-1">
-          <MarketStatsRow model={mergedModel} />
+      {!isManageMode && onTradeSideChange ? (
+        <div className="space-y-1.5">
+          <p className="text-center text-[9px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Direction</p>
+          <div
+            className="flex rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5"
+            role="tablist"
+            aria-label="Long or short"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={side === 'short'}
+              onClick={() => onTradeSideChange('short')}
+              className={`flex-1 rounded-lg py-2 text-[12px] font-bold uppercase tracking-wide transition ${
+                side === 'short'
+                  ? 'bg-rose-500/15 text-rose-200 ring-1 ring-rose-400/30'
+                  : 'text-sigflo-muted hover:bg-white/[0.04] hover:text-sigflo-text'
+              }`}
+            >
+              Short
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={side === 'long'}
+              onClick={() => onTradeSideChange('long')}
+              className={`flex-1 rounded-lg py-2 text-[12px] font-bold uppercase tracking-wide transition ${
+                side === 'long'
+                  ? 'bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/30'
+                  : 'text-sigflo-muted hover:bg-white/[0.04] hover:text-sigflo-text'
+              }`}
+            >
+              Long
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {isManageMode && managePnlDisplay && manageCtx ? (
         <>
@@ -210,6 +249,18 @@ export function TradeControls(props: TradeControlsProps) {
             : undefined
         }
       />
+
+      {!isManageMode && tradeExecute ? (
+        <TradeActionBar
+          embedded
+          canExecute={tradeExecute.canExecute}
+          side={side}
+          directionPicked={tradeExecute.directionPicked}
+          flashSide={tradeExecute.flashSide}
+          onOpenShort={tradeExecute.onOpenShort}
+          onOpenLong={tradeExecute.onOpenLong}
+        />
+      ) : null}
 
       {!isManageMode ? (
         <ScannerInsightCard signal={selectedSignal} status={scannerStatus} tradeScore={metrics.riskSummary.tradeScore} />

@@ -14,6 +14,45 @@ function moneyTight(n: number) {
   return `$${abs.toFixed(2)}`;
 }
 
+/** 1 bp = 0.01% */
+const SL_TP_BPS_CHIPS = [50, 100, 200, 500] as const;
+
+function bpsToPctLabel(bps: number): string {
+  const pct = bps / 100;
+  return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(1)}%`;
+}
+
+function takeProfitPriceFromBps(entry: number, tradeSide: TradeSide, bps: number): number {
+  const m = bps / 10000;
+  return tradeSide === 'long' ? entry * (1 + m) : entry * (1 - m);
+}
+
+function stopPriceFromBps(entry: number, tradeSide: TradeSide, bps: number): number {
+  const m = bps / 10000;
+  return tradeSide === 'long' ? entry * (1 - m) : entry * (1 + m);
+}
+
+function impliedTakeProfitBps(entry: number, tradeSide: TradeSide, tp: number): number | null {
+  if (!(entry > 0) || !Number.isFinite(tp)) return null;
+  const raw =
+    tradeSide === 'long' ? ((tp - entry) / entry) * 10000 : ((entry - tp) / entry) * 10000;
+  if (!Number.isFinite(raw)) return null;
+  return Math.round(raw);
+}
+
+function impliedStopBps(entry: number, tradeSide: TradeSide, stop: number): number | null {
+  if (!(entry > 0) || !Number.isFinite(stop)) return null;
+  const raw =
+    tradeSide === 'long' ? ((entry - stop) / entry) * 10000 : ((stop - entry) / entry) * 10000;
+  if (!Number.isFinite(raw)) return null;
+  return Math.round(raw);
+}
+
+function bpsChipActive(implied: number | null, targetBps: number, tolerance = 12): boolean {
+  if (implied == null) return false;
+  return Math.abs(implied - targetBps) <= tolerance;
+}
+
 export function OrderInputsCard(props: {
   market: MarketMode;
   balanceUsd: number;
@@ -108,7 +147,11 @@ export function OrderInputsCard(props: {
       ? ((tpN - entry) / entry) * 100 * (side === 'long' ? 1 : -1)
       : null;
 
-  const levMax = 50;
+  const entryNum = entry != null && entry > 0 ? entry : null;
+  const slBpsImplied = entryNum != null ? impliedStopBps(entryNum, side, stopN) : null;
+  const tpBpsImplied = entryNum != null ? impliedTakeProfitBps(entryNum, side, tpN) : null;
+
+  const levMax = 200;
 
   return (
     <div className="rounded-2xl border border-white/[0.1] bg-gradient-to-b from-white/[0.04] to-sigflo-surface/95 p-3 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.85)] backdrop-blur-sm space-y-3">
@@ -231,7 +274,7 @@ export function OrderInputsCard(props: {
             className="w-full accent-[#00ffc8]"
           />
           <div className="flex flex-wrap gap-1">
-            {[2, 5, 10, 15, 20, 30, 50].map((x) => (
+            {[2, 5, 10, 25, 50, 100, 200].map((x) => (
               <button
                 key={x}
                 type="button"
@@ -282,11 +325,47 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Stop loss price"
             />
-            {stopPctHint != null && Number.isFinite(stopPctHint) ? (
-              <p className={`text-[10px] font-semibold tabular-nums ${stopPctHint <= 0 ? 'text-rose-300' : 'text-sigflo-muted'}`}>
-                {stopPctHint >= 0 ? '+' : ''}
-                {stopPctHint.toFixed(2)}%
-              </p>
+            {((stopPctHint != null && Number.isFinite(stopPctHint)) ||
+              (entryNum != null && onStopInputChange)) ? (
+              <div
+                className={`flex min-h-[1.25rem] flex-wrap items-center gap-x-2 gap-y-1 ${
+                  stopPctHint != null && Number.isFinite(stopPctHint) ? 'justify-between' : 'justify-end'
+                }`}
+              >
+                {stopPctHint != null && Number.isFinite(stopPctHint) ? (
+                  <p
+                    className={`shrink-0 text-[10px] font-semibold tabular-nums ${stopPctHint <= 0 ? 'text-rose-300' : 'text-sigflo-muted'}`}
+                  >
+                    {stopPctHint >= 0 ? '+' : ''}
+                    {stopPctHint.toFixed(2)}%
+                  </p>
+                ) : null}
+                {entryNum != null && onStopInputChange ? (
+                  <div className="flex min-w-0 flex-wrap justify-end gap-1">
+                    {SL_TP_BPS_CHIPS.map((bps) => {
+                      const active = slEnabled && bpsChipActive(slBpsImplied, bps);
+                      return (
+                        <button
+                          key={`sl-bps-${bps}`}
+                          type="button"
+                          title={`Stop ${bpsToPctLabel(bps)} from entry`}
+                          onClick={() => {
+                            setSlEnabled(true);
+                            onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, bps)));
+                          }}
+                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
+                            active
+                              ? 'border-rose-400/55 bg-rose-500/15 text-rose-200 ring-1 ring-rose-400/20'
+                              : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-rose-400/30 hover:bg-rose-500/10 hover:text-rose-100'
+                          }`}
+                        >
+                          −{bps}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <div className="space-y-1">
@@ -318,11 +397,43 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Take profit price"
             />
-            {tpPctHint != null && Number.isFinite(tpPctHint) ? (
-              <p className={`text-[10px] font-semibold tabular-nums ${tpPctHint >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                {tpPctHint >= 0 ? '+' : ''}
-                {tpPctHint.toFixed(2)}%
-              </p>
+            {((tpPctHint != null && Number.isFinite(tpPctHint)) ||
+              (entryNum != null && onTakeProfitInputChange)) ? (
+              <div className="flex min-h-[1.25rem] w-full min-w-0 flex-nowrap items-center gap-x-2 gap-y-1 overflow-x-auto">
+                {tpPctHint != null && Number.isFinite(tpPctHint) ? (
+                  <p
+                    className={`shrink-0 text-[10px] font-semibold tabular-nums ${tpPctHint >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+                  >
+                    {tpPctHint >= 0 ? '+' : ''}
+                    {tpPctHint.toFixed(2)}%
+                  </p>
+                ) : null}
+                {entryNum != null && onTakeProfitInputChange ? (
+                  <div className="ml-auto flex shrink-0 flex-nowrap gap-1">
+                    {SL_TP_BPS_CHIPS.map((bps) => {
+                      const active = tpEnabled && bpsChipActive(tpBpsImplied, bps);
+                      return (
+                        <button
+                          key={`tp-bps-${bps}`}
+                          type="button"
+                          title={`Take profit ${bpsToPctLabel(bps)} from entry`}
+                          onClick={() => {
+                            setTpEnabled(true);
+                            onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, bps)));
+                          }}
+                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
+                            active
+                              ? 'border-emerald-400/55 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20'
+                              : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-emerald-400/30 hover:bg-emerald-500/10 hover:text-emerald-100'
+                          }`}
+                        >
+                          +{bps}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
