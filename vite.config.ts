@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
   const devAiEnv = (): NodeJS.ProcessEnv => ({ ...process.env, ...envFromFiles });
 
   return {
+    /** Production build for https://liminl.net/sigflo/ (SiteGround). Local dev stays at `/`. */
+    base: mode === 'production' ? '/sigflo/' : '/',
     plugins: [
       {
         name: 'ai-suggest-dev',

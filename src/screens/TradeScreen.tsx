@@ -7,7 +7,10 @@ import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBa
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
 import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
 import { MarketToggle } from '@/components/trade/MarketToggle';
+import { ChartInlineTradeButtons } from '@/components/trade/TradeActionBar';
 import { TradeControls } from '@/components/trade/TradeControls';
+import { LiveIndicator } from '@/components/trade/LiveIndicator';
+import { TradeStats } from '@/components/trade/TradeStats';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
@@ -19,11 +22,21 @@ import { deriveMarketStatus, parseMarketStatusQuery } from '@/lib/marketScannerR
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
+import { tradeTimingChipProps } from '@/lib/tradeTimingChip';
 import { deriveTradeMetrics } from '@/lib/tradeRisk';
 import type { SymbolTicker } from '@/types/market';
 import type { CryptoSignal, SetupScoreLabel, SignalRiskTag, SignalSetupTag } from '@/types/signal';
 import type { MarketMode, TradeSide } from '@/types/trade';
 
+/**
+ * Trade screen layout map (refinement anchor):
+ * - Signal / scanner state: sticky header (pair, `uiSignalState` + LiveIndicator, live connection meta).
+ * - Timing / readiness: `ScannerInsightCard`, `ChartHeader` subtitle, chart dock `dockMeta` on `ChartInlineTradeButtons`.
+ * - LONG / SHORT: `ChartInlineTradeButtons` (dock + assistant) and `TradeControls` when the sheet is expanded.
+ * - Chart, intervals, Clean vs Setup: `ChartHeader` → `PriceChartCard` (`SetupToggle`).
+ * - Entry / stop / target overlays: `PriceChartCard`, gated by `setupMode` (default false).
+ * - AI explanation: `ScannerInsightCard`.
+ */
 const TRADE_CHART_INTERVAL_OPTIONS: { value: TradeChartInterval; label: string }[] = [
   { value: '5', label: '5m' },
   { value: '15', label: '15m' },
@@ -52,17 +65,12 @@ export function TradeScreen() {
   const toastClearRef = useRef<number>(0);
   const [execFlash, setExecFlash] = useState<'long' | 'short' | null>(null);
   const execFlashClearRef = useRef<number>(0);
-  /** User must pick Short/Long under Futures/Spot before Open Short / Open Long unlock. */
-  const [tradeDirectionPicked, setTradeDirectionPicked] = useState(false);
-  const [chartDockOpen, setChartDockOpen] = useState(() => {
-    const saved = window.localStorage.getItem('sigflo.trade.chartDockOpen');
-    if (saved === '1') return true;
-    if (saved === '0') return false;
-    return false;
-  });
-  useEffect(() => {
-    window.localStorage.setItem('sigflo.trade.chartDockOpen', chartDockOpen ? '1' : '0');
-  }, [chartDockOpen]);
+  /** Price chart dock always mounts collapsed; preference is not persisted across visits. */
+  const [chartDockOpen, setChartDockOpen] = useState(false);
+  /** After user toggles the chart dock (title or chevron), drop the chevron glow/pulse. */
+  const [chartDockChevronIdle, setChartDockChevronIdle] = useState(false);
+  /** Clean = no trade overlays; Setup = entry / stop / target (and liq on perps). */
+  const [setupMode, setSetupMode] = useState(false);
   const [tick, setTick] = useState(0);
   const appliedPortfolioDefaults = useRef<string | null>(null);
   useEffect(() => {
@@ -216,6 +224,30 @@ export function TradeScreen() {
 
   const canExecute = amountUsd > 0 && metrics.balanceUsd > 0 && Number.isFinite(metrics.positionSizeUsd);
 
+  const tradeDockStats = useMemo(() => {
+    const entry = mergedModel.entry;
+    const stop = mergedModel.stop;
+    const target = mergedModel.target;
+    const rr = mergedModel.riskReward;
+    if (!Number.isFinite(entry) || entry <= 0) {
+      return { rewardPercent: 0, riskPercent: 0, rrRatio: Number.isFinite(rr) ? rr : 0 };
+    }
+    let rewardPct: number;
+    let riskPct: number;
+    if (side === 'long') {
+      rewardPct = ((target - entry) / entry) * 100;
+      riskPct = ((entry - stop) / entry) * 100;
+    } else {
+      rewardPct = ((entry - target) / entry) * 100;
+      riskPct = ((stop - entry) / entry) * 100;
+    }
+    return {
+      rewardPercent: Number.isFinite(rewardPct) ? rewardPct : 0,
+      riskPercent: Number.isFinite(riskPct) ? Math.abs(riskPct) : 0,
+      rrRatio: Number.isFinite(rr) ? rr : 0,
+    };
+  }, [mergedModel.entry, mergedModel.stop, mergedModel.target, mergedModel.riskReward, side]);
+
   const scenarioProb = useMemo(
     () =>
       computeScenarioProbabilities({
@@ -224,6 +256,20 @@ export function TradeScreen() {
         side: side === 'long' ? 'long' : 'short',
       }),
     [metrics.riskSummary.tradeScore, selectedSignal.setupScore, side],
+  );
+
+  const dockTimingChip = useMemo(
+    () => tradeTimingChipProps(scannerStatus, metrics.riskSummary.tradeScore),
+    [scannerStatus, metrics.riskSummary.tradeScore],
+  );
+
+  const dockDecisionMeta = useMemo(
+    () => ({
+      confidenceLabel: String(metrics.riskSummary.tradeScore),
+      setupQualityLabel: selectedSignal.setupScoreLabel,
+      timing: dockTimingChip,
+    }),
+    [dockTimingChip, metrics.riskSummary.tradeScore, selectedSignal.setupScoreLabel],
   );
 
   const exitAutomationScopeKey = useMemo(() => {
@@ -426,6 +472,11 @@ export function TradeScreen() {
   const intervalLabel =
     chartInterval === 'D' ? '1D' : chartInterval === 'W' ? '1W' : chartInterval === '60' ? '1h' : chartInterval === '240' ? '4h' : `${chartInterval}m`;
 
+  const toggleChartDock = useCallback(() => {
+    setChartDockChevronIdle(true);
+    setChartDockOpen((o) => !o);
+  }, []);
+
   const tradeScrollRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -481,19 +532,16 @@ export function TradeScreen() {
                   <button
                     type="button"
                     onClick={() => navigate('/feed')}
-                    className={`flex max-w-[40%] shrink-0 flex-col items-end gap-0.5 rounded-lg py-0.5 pl-2 text-right text-[10px] font-semibold leading-tight transition hover:bg-white/[0.06] active:scale-[0.98] ${uiStateStyle.text}`}
+                    className={`sigflo-trade-header-triggered flex max-w-[40%] shrink-0 flex-col items-end gap-0.5 rounded-lg py-0.5 pl-2 text-right text-[10px] font-semibold leading-tight transition hover:bg-white/[0.08] active:scale-[0.98] ${uiStateStyle.text}`}
                     aria-label="Back to signals"
                   >
                     <span className="inline-flex items-center justify-end gap-1">
-                      <span className="relative flex h-2 w-2 shrink-0">
-                        {uiStateStyle.pulse ? (
-                          <>
-                            <span className="absolute inset-[-4px] rounded-full bg-[#00ffc8]/22 blur-[2px]" />
-                            <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${uiStateStyle.dot} [animation-duration:2.8s]`} />
-                          </>
-                        ) : null}
-                        <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
-                      </span>
+                      <LiveIndicator
+                        pulse={uiStateStyle.pulse}
+                        dotClassName={uiStateStyle.dot}
+                        size="md"
+                        pulseDurationSec={2.4}
+                      />
                       <span className="truncate uppercase tracking-[0.11em] text-[#b2ffef]">
                         {uiSignalStateLabel(uiState)}
                       </span>
@@ -505,15 +553,12 @@ export function TradeScreen() {
                     className={`flex max-w-[40%] shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${uiStateStyle.text}`}
                   >
                     <span className="inline-flex items-center justify-end gap-1">
-                      <span className="relative flex h-1.5 w-1.5 shrink-0">
-                        {uiStateStyle.pulse ? (
-                          <>
-                            <span className="absolute inset-[-4px] rounded-full bg-[#00ffc8]/22 blur-[2px]" />
-                            <span className={`absolute inline-flex h-full w-full animate-pulse-dot rounded-full ${uiStateStyle.dot} [animation-duration:2.8s]`} />
-                          </>
-                        ) : null}
-                        <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
-                      </span>
+                      <LiveIndicator
+                        pulse={uiStateStyle.pulse}
+                        dotClassName={uiStateStyle.dot}
+                        size="sm"
+                        pulseDurationSec={2.8}
+                      />
                       <span className="truncate">{uiSignalStateLabel(uiState)}</span>
                     </span>
                     <span className="max-w-full truncate font-normal text-sigflo-muted">
@@ -545,95 +590,96 @@ export function TradeScreen() {
             )}
           </div>
         </header>
-        <div className="mx-auto max-w-lg px-3 pb-2">
-          <MarketToggle value={market} onChange={setMarket} />
-        </div>
       </div>
 
       <div
         ref={tradeScrollRef}
-        className="trade-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+        className="trade-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
       >
-        {!isManageMode ? (
-          <TradeChartScenarioStrip
-            mode="trade"
-            side={side}
-            estimatedPnlUsd={liveUnrealized.pnlUsd}
-            estimatedPnlPct={liveUnrealized.movePct}
-            targetProfitUsd={metrics.targetProfitUsd}
-            stopLossUsd={metrics.stopLossUsd}
-            riskReward={mergedModel.riskReward}
-            probUp={scenarioProb.probUp}
-            probDown={scenarioProb.probDown}
-            marginUsd={metrics.amountUsedUsd}
-            estFeeUsd={estFeeUsd}
-            liqPrice={market === 'futures' ? metrics.liquidation : null}
-            entry={modelForMetrics.entry}
-            stop={modelForMetrics.stop}
-            target={modelForMetrics.target}
-            positionSizeUsd={metrics.positionSizeUsd}
-            leverage={leverage}
-            isFutures={market === 'futures'}
-            tradeScore={metrics.riskSummary.tradeScore}
-            setupScore={selectedSignal.setupScore}
-            trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
-            momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
-            exitAiMode={exitAuto.mode}
-            exitStrategyPreset={exitAuto.strategy}
-            automationSafeguards={exitAuto.safeguards}
-          />
-        ) : managePnlDisplay && manageCtx ? (
-          <TradeChartScenarioStrip
-            mode="manage"
-            pnlUsd={managePnlDisplay.pnlUsd}
-            pnlPct={managePnlDisplay.pnlPct}
-            pair={manageCtx.pair}
-            entry={manageCtx.entryPrice}
-            mark={
-              typeof markForManage === 'number' && Number.isFinite(markForManage)
-                ? markForManage
-                : mergedModel.entry
-            }
-            sizeLabel={manageStripSizeLabel(manageCtx)}
-            side={manageCtx.side}
-            riskReward={mergedModel.riskReward}
-            stop={modelForMetrics.stop}
-            target={modelForMetrics.target}
-            trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
-            momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
-            exitAiMode={exitAuto.mode}
-            exitStrategyPreset={exitAuto.strategy}
-            automationSafeguards={exitAuto.safeguards}
-          />
-        ) : null}
-
-        <div className="mx-auto w-full max-w-lg space-y-2 px-1.5 pt-2">
-          {exitAuto.mode === 'assisted' &&
-          exitFlow &&
-          (exitFlow.effective.state === 'trim' || exitFlow.effective.state === 'exit') ? (
-            <AssistedExitConfirmBar
-              headline={exitFlow.effective.headline}
-              detail={exitFlow.effective.action}
-              onConfirm={() => {
-                exitAuto.pushActivity({
-                  kind: 'assisted_ready',
-                  message: `Confirmed prepared exit (${exitFlow.effective.headline})`,
-                });
-                flashTradeToast('Prepared exit acknowledged — complete on your exchange.');
-              }}
+        <div className="mx-auto flex w-full max-w-lg flex-col gap-1 px-3 pb-0 pt-2">
+          <div className="flex flex-col gap-1">
+            <MarketToggle value={market} onChange={setMarket} />
+            {!isManageMode ? (
+              <TradeChartScenarioStrip
+                mode="trade"
+                side={side}
+                estimatedPnlUsd={liveUnrealized.pnlUsd}
+                estimatedPnlPct={liveUnrealized.movePct}
+                targetProfitUsd={metrics.targetProfitUsd}
+                stopLossUsd={metrics.stopLossUsd}
+                riskReward={mergedModel.riskReward}
+                probUp={scenarioProb.probUp}
+                probDown={scenarioProb.probDown}
+                marginUsd={metrics.amountUsedUsd}
+                estFeeUsd={estFeeUsd}
+                liqPrice={market === 'futures' ? metrics.liquidation : null}
+                entry={modelForMetrics.entry}
+                stop={modelForMetrics.stop}
+                target={modelForMetrics.target}
+                positionSizeUsd={metrics.positionSizeUsd}
+                leverage={leverage}
+                isFutures={market === 'futures'}
+                tradeScore={metrics.riskSummary.tradeScore}
+                setupScore={selectedSignal.setupScore}
+                trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
+                momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
+                exitAiMode={exitAuto.mode}
+                exitStrategyPreset={exitAuto.strategy}
+                automationSafeguards={exitAuto.safeguards}
+              />
+            ) : managePnlDisplay && manageCtx ? (
+              <TradeChartScenarioStrip
+                mode="manage"
+                pnlUsd={managePnlDisplay.pnlUsd}
+                pnlPct={managePnlDisplay.pnlPct}
+                pair={manageCtx.pair}
+                entry={manageCtx.entryPrice}
+                mark={
+                  typeof markForManage === 'number' && Number.isFinite(markForManage)
+                    ? markForManage
+                    : mergedModel.entry
+                }
+                sizeLabel={manageStripSizeLabel(manageCtx)}
+                side={manageCtx.side}
+                riskReward={mergedModel.riskReward}
+                stop={modelForMetrics.stop}
+                target={modelForMetrics.target}
+                trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
+                momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
+                exitAiMode={exitAuto.mode}
+                exitStrategyPreset={exitAuto.strategy}
+                automationSafeguards={exitAuto.safeguards}
+              />
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-1">
+            {exitAuto.mode === 'assisted' &&
+            exitFlow &&
+            (exitFlow.effective.state === 'trim' || exitFlow.effective.state === 'exit') ? (
+              <AssistedExitConfirmBar
+                headline={exitFlow.effective.headline}
+                detail={exitFlow.effective.action}
+                onConfirm={() => {
+                  exitAuto.pushActivity({
+                    kind: 'assisted_ready',
+                    message: `Confirmed prepared exit (${exitFlow.effective.headline})`,
+                  });
+                  flashTradeToast('Prepared exit acknowledged — complete on your exchange.');
+                }}
+              />
+            ) : null}
+            <ExitAutomationControls
+              mode={exitAuto.mode}
+              onModeChange={exitAuto.setMode}
+              strategy={exitAuto.strategy}
+              onStrategyChange={exitAuto.setStrategy}
+              safeguards={exitAuto.safeguards}
+              onSafeguardsChange={exitAuto.setSafeguards}
+              activity={exitAuto.activity}
+              onClearActivity={exitAuto.clearActivity}
+              compactActivity={!isManageMode}
             />
-          ) : null}
-          <ExitAutomationControls
-            mode={exitAuto.mode}
-            onModeChange={exitAuto.setMode}
-            strategy={exitAuto.strategy}
-            onStrategyChange={exitAuto.setStrategy}
-            safeguards={exitAuto.safeguards}
-            onSafeguardsChange={exitAuto.setSafeguards}
-            activity={exitAuto.activity}
-            onClearActivity={exitAuto.clearActivity}
-            compactActivity={!isManageMode}
-          />
+          </div>
         </div>
 
         <TradeControls
@@ -659,80 +705,112 @@ export function TradeScreen() {
           onTargetStrChange={setTargetStr}
           metrics={metrics}
           estFeeUsd={estFeeUsd}
-          onTradeSideChange={(s) => {
-            setSide(s);
-            setTradeDirectionPicked(true);
-          }}
-          tradeExecute={
-            !isManageMode
-              ? {
-                  canExecute,
-                  directionPicked: tradeDirectionPicked,
-                  flashSide: execFlash,
-                  onOpenShort: () => executeTrade('short'),
-                  onOpenLong: () => executeTrade('long'),
-                }
-              : undefined
-          }
         />
       </div>
 
       <div className="sticky bottom-0 z-30 shrink-0 border-t border-white/10 bg-black/[0.92] backdrop-blur-xl">
         <div className="divide-y divide-white/[0.08]">
-          <div className="mx-auto w-full max-w-lg">
-              <button
-                type="button"
-                onClick={() => setChartDockOpen((o) => !o)}
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.05]"
-                aria-expanded={chartDockOpen}
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">Price chart</span>
-                  <span className="ml-2 text-xs font-semibold text-white">{intervalLabel}</span>
-                  {!chartDockOpen && mergedModel.lastPrice != null && Number.isFinite(mergedModel.lastPrice) ? (
-                    <span className="ml-2 font-mono text-sm font-semibold text-cyan-200/95">
-                      ${formatQuoteNumber(mergedModel.lastPrice)}
+          <div className="mx-auto w-full max-w-lg border-b border-white/[0.08] bg-gradient-to-b from-black/55 to-black/[0.38] backdrop-blur-sm">
+              <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 px-1.5 py-0.5 sm:px-2 sm:gap-x-1.5">
+                <div className="min-w-0 justify-self-start flex flex-wrap items-center gap-x-1.5 gap-y-0">
+                  <button
+                    type="button"
+                    onClick={toggleChartDock}
+                    className="max-w-full truncate text-left transition hover:bg-white/[0.03] active:bg-white/[0.05] rounded py-0 pl-0.5 pr-0.5"
+                    aria-expanded={chartDockOpen}
+                    aria-label={chartDockOpen ? 'Collapse price chart' : 'Expand price chart'}
+                  >
+                    <span className="whitespace-nowrap">
+                      <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-sigflo-muted">Price chart</span>
+                      <span className="ml-1 text-[11px] font-semibold text-white">{intervalLabel}</span>
+                      {!chartDockOpen && mergedModel.lastPrice != null && Number.isFinite(mergedModel.lastPrice) ? (
+                        <span className="ml-1 font-mono text-[11px] font-semibold tabular-nums text-cyan-200/95 sm:text-xs">
+                          ${formatQuoteNumber(mergedModel.lastPrice)}
+                        </span>
+                      ) : null}
                     </span>
+                  </button>
+                  {!isManageMode ? (
+                    <div className="min-w-0 border-l border-white/[0.1] pl-1.5 sm:pl-2">
+                      <TradeStats
+                        variant="strip"
+                        compact
+                        riskPercent={tradeDockStats.riskPercent}
+                        rewardPercent={tradeDockStats.rewardPercent}
+                        rrRatio={tradeDockStats.rrRatio}
+                      />
+                    </div>
                   ) : null}
                 </div>
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  className={`shrink-0 text-sigflo-muted transition-transform duration-200 ${chartDockOpen ? 'rotate-180' : ''}`}
-                  aria-hidden
+                <div className="flex justify-center justify-self-center">
+                  {!isManageMode ? (
+                    <ChartInlineTradeButtons
+                      variant="dock"
+                      market={market}
+                      canExecute={canExecute}
+                      flashSide={execFlash}
+                      onOpenShort={() => executeTrade('short')}
+                      onOpenLong={() => executeTrade('long')}
+                      signalBias={selectedSignal.side === 'short' ? 'short' : 'long'}
+                      dockMeta={dockDecisionMeta}
+                    />
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleChartDock}
+                  className={`justify-self-end flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition hover:bg-white/[0.06] active:bg-white/[0.08] ${
+                    chartDockChevronIdle
+                      ? 'text-sigflo-muted hover:text-white'
+                      : 'sigflo-chart-dock-chevron-btn hover:text-cyan-100'
+                  }`}
+                  aria-expanded={chartDockOpen}
+                  aria-label={chartDockOpen ? 'Collapse price chart' : 'Expand price chart'}
                 >
-                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className={`text-current transition-transform duration-200 ${chartDockOpen ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  >
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
             {chartDockOpen ? (
-              <ChartHeader
-                collapsed={false}
-                plotExpandedPx={TRADE_CHART_PLOT_EXPANDED_PX}
-                model={mergedModel}
-                market={market}
-                intervalLabel={intervalLabel}
-                loadingInterval={live.loadingInterval}
-                liveUpdatedAt={live.lastUpdateTs}
-                change24hPct={mergedModel.change24hPct}
-                timeframeOptions={TRADE_CHART_INTERVAL_OPTIONS}
-                chartInterval={chartInterval}
-                onChartIntervalChange={(v) => {
-                  setChartInterval(v);
-                  window.localStorage.setItem('sigflo.trade.chartInterval', v);
-                }}
-                exchangeStyleHero={!isManageMode}
-                heroPairLabel={isManageMode ? mergedModel.pair : undefined}
-                metaCaption={
-                  isManageMode
-                    ? undefined
-                    : market === 'futures'
-                      ? 'PERP · Funding +0.010%'
-                      : 'Spot · No funding'
-                }
-                className="pb-2"
-              />
+              <>
+                <ChartHeader
+                  collapsed={false}
+                  plotExpandedPx={TRADE_CHART_PLOT_EXPANDED_PX}
+                  model={mergedModel}
+                  market={market}
+                  intervalLabel={intervalLabel}
+                  loadingInterval={live.loadingInterval}
+                  liveUpdatedAt={live.lastUpdateTs}
+                  change24hPct={mergedModel.change24hPct}
+                  timeframeOptions={TRADE_CHART_INTERVAL_OPTIONS}
+                  chartInterval={chartInterval}
+                  onChartIntervalChange={(v) => {
+                    setChartInterval(v);
+                    window.localStorage.setItem('sigflo.trade.chartInterval', v);
+                  }}
+                  exchangeStyleHero={!isManageMode}
+                  heroPairLabel={isManageMode ? mergedModel.pair : undefined}
+                  metaCaption={
+                    isManageMode
+                      ? undefined
+                      : market === 'futures'
+                        ? 'PERP · Funding +0.010%'
+                        : 'Spot · No funding'
+                  }
+                  setupMode={!isManageMode ? setupMode : undefined}
+                  onSetupModeToggle={!isManageMode ? () => setSetupMode((v) => !v) : undefined}
+                  tradeTimingState={!isManageMode ? dockTimingChip.state : undefined}
+                  className="pb-2"
+                />
+              </>
             ) : null}
           </div>
 
@@ -774,7 +852,7 @@ function manageStripSizeLabel(ctx: ManageTradePositionContext): string {
   if (ctx.posSize != null && Number.isFinite(ctx.posSize)) {
     return `${formatQuoteNumber(Math.abs(ctx.posSize))} ${base}`;
   }
-  return `≈ $${Math.round(ctx.positionUsd).toLocaleString('en-US')} notional`;
+  return `≈ $${Math.round(ctx.positionUsd).toLocaleString('en-US')} position size`;
 }
 
 function pairBaseToLinearSymbol(pair: string): string {

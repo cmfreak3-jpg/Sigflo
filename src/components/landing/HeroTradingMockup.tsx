@@ -28,21 +28,26 @@ function MiniChart() {
 export function HeroTradingMockup() {
   return (
     <div className="relative mx-auto w-full max-w-[340px] lg:max-w-[380px]">
-      <div
+      <motion.div
         className="pointer-events-none absolute left-1/2 top-1/2 h-[min(120%,520px)] w-[min(140%,440px)] -translate-x-1/2 -translate-y-1/2"
         style={{
-          background: 'radial-gradient(circle, rgba(0,200,120,0.15) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(0,200,120,0.07) 0%, transparent 72%)',
         }}
+        animate={{
+          opacity: [0.55, 0.82, 0.55],
+          scale: [0.98, 1.02, 0.98],
+        }}
+        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
         aria-hidden
       />
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.65, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-2xl border border-[rgba(0,200,120,0.22)] bg-landing-card"
+        className="relative overflow-hidden rounded-2xl border border-white/[0.1] bg-landing-card/80 backdrop-blur-md"
         style={{
           boxShadow:
-            '0 0 0 1px rgba(0, 200, 120, 0.16), 0 28px 88px rgba(0, 0, 0, 0.58), 0 0 64px -18px rgba(0, 200, 120, 0.14)',
+            'inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 200, 120, 0.12), 0 28px 88px rgba(0, 0, 0, 0.55), 0 0 48px -20px rgba(157, 0, 255, 0.06)',
         }}
       >
         <div
@@ -54,19 +59,27 @@ export function HeroTradingMockup() {
           }}
           aria-hidden
         />
-        <div className="relative space-y-3 p-4 sm:p-5">
+        <motion.div
+          className="relative space-y-3 p-4 sm:p-5"
+          animate={{ y: [0, -4, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+        >
           <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
             <div>
               <p className="text-sm font-semibold tracking-tight text-landing-text">BTC / USDT</p>
               <p className="text-[11px] text-landing-muted opacity-90">Perpetual · 15m context</p>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-landing-surface/80 px-2.5 py-1">
+            <div className="flex items-center gap-2 rounded-full border border-[rgba(0,200,120,0.28)] bg-[rgba(0,200,120,0.08)] px-2.5 py-1">
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-landing-accent opacity-40" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-landing-accent" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-landing-accent opacity-50" />
+                <motion.span
+                  className="relative inline-flex h-2 w-2 rounded-full bg-landing-accent"
+                  animate={{ opacity: [1, 0.35, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                />
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-wide text-landing-muted opacity-90">
-                Live
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-landing-accent">
+                LIVE SIGNAL
               </span>
             </div>
           </div>
@@ -116,7 +129,7 @@ export function HeroTradingMockup() {
           <p className="text-center text-[10px] leading-relaxed text-landing-muted opacity-90">
             AI context summarizes structure, invalidation, and execution notes — without the noise.
           </p>
-        </div>
+        </motion.div>
       </motion.div>
     </div>
   );

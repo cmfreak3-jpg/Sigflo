@@ -152,6 +152,101 @@
   }
 }
 
+/* Price chart dock — chevron: soft cyan glow + pulse (expand/collapse affordance). */
+@keyframes sigflo-chart-dock-chevron-glow {
+  0%,
+  100% {
+    color: rgb(148 163 184);
+    box-shadow:
+      0 0 0 0 rgba(34, 211, 238, 0),
+      0 0 0 0 rgba(34, 211, 238, 0);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    color: rgb(207 250 254);
+    box-shadow:
+      0 0 10px 2px rgba(34, 211, 238, 0.28),
+      0 0 22px 6px rgba(34, 211, 238, 0.12);
+    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.45));
+  }
+}
+
+@keyframes sigflo-chart-dock-chevron-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.sigflo-chart-dock-chevron-btn {
+  position: relative;
+  transform-origin: center;
+  color: rgb(148 163 184);
+  animation:
+    sigflo-chart-dock-chevron-glow 2.4s ease-in-out infinite,
+    sigflo-chart-dock-chevron-breathe 2.4s ease-in-out infinite;
+  will-change: box-shadow, filter, color, transform;
+}
+
+.sigflo-chart-dock-chevron-btn svg {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-chart-dock-chevron-btn {
+    animation: none;
+    color: rgb(203 213 225);
+    box-shadow: none;
+    filter: none;
+    transform: none;
+  }
+}
+
+/* Trade screen header — triggered state: soft halo + premium affordance */
+@keyframes sigflo-trade-triggered-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 255, 200, 0);
+  }
+  50% {
+    box-shadow: 0 0 16px 3px rgba(0, 255, 200, 0.18);
+  }
+}
+
+@keyframes sigflo-trade-triggered-dot-glow {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(0, 255, 200, 0.45));
+  }
+  50% {
+    opacity: 0.88;
+    filter: drop-shadow(0 0 7px rgba(0, 255, 200, 0.75));
+  }
+}
+
+.sigflo-trade-header-triggered {
+  animation: sigflo-trade-triggered-halo 2.8s ease-in-out infinite;
+}
+
+.sigflo-trade-header-triggered .sigflo-trade-triggered-dot-wrap {
+  animation: sigflo-trade-triggered-dot-glow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-trade-header-triggered {
+    animation: none;
+    box-shadow: 0 0 12px -4px rgba(0, 255, 200, 0.2);
+  }
+  .sigflo-trade-header-triggered .sigflo-trade-triggered-dot-wrap {
+    animation: none;
+    filter: drop-shadow(0 0 4px rgba(0, 255, 200, 0.4));
+  }
+}
+
 @keyframes sigflo-trigger-card-in {
   0% {
     transform: translateY(0) scale(1);

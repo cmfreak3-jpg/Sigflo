@@ -119,21 +119,21 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
   const [panelOpen, setPanelOpen] = useState(true);
 
   return (
-    <div className="mx-auto w-full max-w-lg rounded-xl border border-white/[0.06] bg-white/[0.02] px-2.5 py-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <div className="mx-auto w-full max-w-lg rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <button
         type="button"
         onClick={() => setPanelOpen((o) => !o)}
-        className="flex w-full items-start justify-between gap-2 text-left transition active:scale-[0.995]"
+        className="flex w-full items-start justify-between gap-1.5 text-left transition active:scale-[0.995]"
         aria-expanded={panelOpen}
         aria-controls="exit-ai-controls-body"
       >
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-sigflo-text">Exit AI</span>
-            <span className="text-[8px] font-medium text-sigflo-muted">Optional automation</span>
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+            <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-sigflo-text">Exit AI</span>
+            <span className="text-[7px] font-medium text-sigflo-muted">Optional</span>
           </div>
           {!panelOpen ? (
-            <p className="mt-1 text-[9px] leading-snug text-sigflo-muted/95">
+            <p className="mt-0.5 text-[8px] leading-tight text-sigflo-muted/95">
               <span className="font-semibold text-sigflo-text/90">{EXIT_AI_MODE_LABEL[mode]}</span>
               {mode !== 'manual' ? (
                 <>
@@ -145,8 +145,8 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
           ) : null}
         </div>
         <svg
-          width="14"
-          height="14"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           className={`mt-0.5 shrink-0 text-sigflo-muted transition-transform duration-300 ${panelOpen ? 'rotate-180' : ''}`}
@@ -161,8 +161,8 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
         className={`grid transition-[grid-template-rows] duration-300 ease-out ${panelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="space-y-2.5 border-t border-white/[0.06] pt-2.5">
-            <div className="flex rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5" role="tablist" aria-label="Exit mode">
+          <div className="space-y-2 border-t border-white/[0.06] pt-2">
+            <div className="flex rounded-lg border border-white/[0.06] bg-white/[0.02] p-px" role="tablist" aria-label="Exit mode">
               {MODES.map((m) => {
                 const on = mode === m;
                 return (
@@ -172,7 +172,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                     role="tab"
                     aria-selected={on}
                     onClick={() => onModeChange(m)}
-                    className={`flex-1 rounded-lg py-1.5 text-[10px] font-semibold uppercase tracking-wide transition sm:text-[11px] ${
+                    className={`flex-1 rounded-md py-1 text-[9px] font-semibold uppercase tracking-wide transition sm:text-[10px] ${
                       on
                         ? 'bg-sigflo-accent/12 text-sigflo-accent ring-1 ring-sigflo-accent/25'
                         : 'text-sigflo-muted hover:text-sigflo-text'
@@ -183,12 +183,12 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                 );
               })}
             </div>
-            <p className="text-[9px] leading-snug text-sigflo-muted/95">{EXIT_AI_MODE_HELPER[mode]}</p>
+            <p className="text-[10px] leading-snug text-sigflo-muted/95 sm:text-[11px]">{EXIT_AI_MODE_HELPER[mode]}</p>
 
             {mode !== 'manual' ? (
-              <div className="space-y-1">
-                <p className="text-[8px] font-semibold uppercase tracking-wider text-sigflo-muted/90">Exit behavior</p>
-                <div className="flex flex-wrap gap-1">
+              <div className="space-y-0.5">
+                <p className="text-[7px] font-semibold uppercase tracking-wider text-sigflo-muted/90">Exit behavior</p>
+                <div className="flex flex-wrap gap-0.5">
                   {STRATEGIES.map((s) => {
                     const on = strategy === s;
                     return (
@@ -197,7 +197,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                         type="button"
                         onClick={() => onStrategyChange(s)}
                         title={EXIT_STRATEGY_BLURB[s]}
-                        className={`rounded-lg px-2 py-1 text-[8px] font-semibold transition ring-1 ${
+                        className={`rounded-md px-1.5 py-0.5 text-[7px] font-semibold transition ring-1 sm:px-2 sm:text-[8px] ${
                           on
                             ? 'bg-sigflo-accent/12 text-sigflo-accent ring-sigflo-accent/25'
                             : 'bg-white/[0.02] text-sigflo-muted ring-white/[0.06] hover:bg-white/[0.04] hover:text-sigflo-text'
@@ -208,20 +208,20 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                     );
                   })}
                 </div>
-                <p className="text-[8px] leading-snug text-sigflo-muted/85">{EXIT_STRATEGY_BLURB[strategy]}</p>
+                <p className="text-[7px] leading-tight text-sigflo-muted/85 sm:text-[8px]">{EXIT_STRATEGY_BLURB[strategy]}</p>
               </div>
             ) : null}
 
             <button
               type="button"
               onClick={() => setSafeguardsOpen((o) => !o)}
-              className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-2 py-2 text-left text-[9px] font-semibold text-sigflo-text transition hover:bg-white/[0.04]"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 text-left text-[8px] font-semibold text-sigflo-text transition hover:bg-white/[0.04]"
               aria-expanded={safeguardsOpen}
             >
               <span>Safeguards</span>
               <svg
-                width="14"
-                height="14"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 className={`shrink-0 text-sigflo-muted transition-transform duration-200 ${safeguardsOpen ? 'rotate-180' : ''}`}
@@ -232,7 +232,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
             </button>
 
             {safeguardsOpen ? (
-              <div className="space-y-2 rounded-xl border border-white/[0.06] bg-sigflo-surface/80 px-2 py-2.5">
+              <div className="space-y-1.5 rounded-lg border border-white/[0.06] bg-sigflo-surface/80 px-2 py-2">
                 <label className="block text-[8px] text-sigflo-muted">
                   <span className="font-semibold uppercase tracking-wider text-sigflo-text/90">Max loss before forced close</span>
                   <span className="mt-0.5 block text-[8px] text-sigflo-muted">% unrealized (e.g. 5 = −5%)</span>
@@ -288,9 +288,9 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
             ) : null}
 
             {activity.length > 0 ? (
-              <div className="border-t border-white/[0.06] pt-2">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-sigflo-muted">Activity</span>
+              <div className="border-t border-white/[0.06] pt-1.5">
+                <div className="mb-0.5 flex items-center justify-between gap-2">
+                  <span className="text-[7px] font-bold uppercase tracking-wider text-sigflo-muted">Activity</span>
                   {onClearActivity ? (
                     <button
                       type="button"
@@ -302,12 +302,12 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                   ) : null}
                 </div>
                 <ul
-                  className={`space-y-1.5 overflow-y-auto pr-0.5 text-[9px] leading-snug text-white/80 ${
-                    compactActivity ? 'max-h-24' : 'max-h-36'
+                  className={`space-y-1 overflow-y-auto pr-0.5 text-[8px] leading-tight text-white/80 ${
+                    compactActivity ? 'max-h-20' : 'max-h-32'
                   }`}
                 >
                   {[...activity].reverse().map((e) => (
-                    <li key={e.id} className="flex gap-2 border-b border-white/[0.04] pb-1.5 last:border-0">
+                    <li key={e.id} className="flex gap-1.5 border-b border-white/[0.04] pb-1 last:border-0">
                       <span className="shrink-0 font-mono text-[8px] text-sigflo-muted">{formatActivityTime(e.ts)}</span>
                       <span className="min-w-0 text-white/85">{e.message}</span>
                     </li>

@@ -1,0 +1,11 @@
+# Upload as `.htaccess` inside `public_html/sigflo/` (same folder as index.html).
+# Enables React Router (e.g. /sigflo/feed) on Apache (SiteGround).
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /sigflo/
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /sigflo/index.html [L]
+</IfModule>

@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { StatusChip } from '@/components/trade/StatusChip';
 import { requestAssistantSuggestion } from '@/services/ai/client';
+import { tradeTimingChipProps } from '@/lib/tradeTimingChip';
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
 
@@ -33,7 +35,7 @@ function readFor(signal: CryptoSignal, status: MarketRowStatus): string {
     return 'Breakout coiling';
   }
   if (signal.setupType === 'pullback') {
-    if (status === 'triggered') return trendAligned ? 'Trend holding' : 'Trend uncertain';
+    if (status === 'triggered') return trendAligned ? 'Pullback holding' : 'Trend uncertain';
     if (status === 'developing') return 'Pullback forming';
     if (status === 'overextended') return 'Bounce stretched';
     return 'Weak bounce';
@@ -48,16 +50,8 @@ function watchFor(signal: CryptoSignal): string {
   return 'continuation or rollover';
 }
 
-function entryState(status: MarketRowStatus, tradeScore: number): 'Too early' | 'Ready' | 'Too late' | 'Too risky' {
-  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
-  if (status === 'triggered' && tradeScore >= 65) return 'Ready';
-  if (status === 'triggered' && tradeScore < 55) return 'Too late';
-  if (status === 'idle') return 'Too early';
-  return 'Too early';
-}
-
 function actionFor(signal: CryptoSignal, status: MarketRowStatus, tradeScore: number): string {
-  if (signal.riskTag === 'High Risk' || tradeScore < 45) return 'High risk - reduce size';
+  if (signal.riskTag === 'High Risk' || tradeScore < 45) return 'High risk — reduce size';
   if (status === 'overextended') return 'Avoid chasing';
   if (status === 'developing') return 'Wait for confirmation';
   if (status === 'triggered' && tradeScore >= 65) return 'Entry active';
@@ -65,6 +59,25 @@ function actionFor(signal: CryptoSignal, status: MarketRowStatus, tradeScore: nu
     return signal.side === 'long' ? 'Confirmation above level needed' : 'Confirmation below level needed';
   }
   return 'Keep size controlled';
+}
+
+/** Up to 4 short lines: prefer sentences from AI copy, then structural cues. */
+function previewBullets(signal: CryptoSignal, status: MarketRowStatus): string[] {
+  const raw = signal.aiExplanation.trim();
+  const sentences = raw
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter((s) => s.length > 8);
+  const out: string[] = [];
+  for (const s of sentences) {
+    if (out.length >= 4) break;
+    if (!out.some((o) => o.toLowerCase() === s.toLowerCase())) out.push(s);
+  }
+  if (out.length < 2) out.push(readFor(signal, status));
+  if (out.length < 3) out.push(trendCue(signal));
+  if (out.length < 4) out.push(`Watch: ${watchFor(signal)}`);
+  if (out.length < 4) out.push(momentumCue(signal));
+  return out.slice(0, 4);
 }
 
 export function ScannerInsightCard({
@@ -78,9 +91,9 @@ export function ScannerInsightCard({
 }) {
   const [aiResult, setAiResult] = useState<{ headline: string; body: string; source: 'local' | 'remote' } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
-  const mainRead = readFor(signal, status);
-  const watch = watchFor(signal);
-  const entry = entryState(status, tradeScore);
+  const [readOpen, setReadOpen] = useState(false);
+  const bullets = useMemo(() => previewBullets(signal, status), [signal, status]);
+  const timingChip = tradeTimingChipProps(status, tradeScore);
   const action = actionFor(signal, status, tradeScore);
   const sideChipClass =
     signal.side === 'long'
@@ -116,30 +129,52 @@ export function ScannerInsightCard({
         >
           {signal.side}
         </span>
-        <p className="text-right text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300/80">Scanner</p>
-      </div>
-      <p className="mt-1 text-lg font-semibold leading-tight text-white">{mainRead}</p>
-      <p className="mt-1 flex items-center gap-1.5 text-sm">
-        <span className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-cyan-200">Watch</span>
-        <span className="font-semibold text-cyan-100">{watch}</span>
-      </p>
-
-      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px]">
-        <p className="text-sigflo-muted">
-          Setup: <span className="font-semibold text-white">{signal.setupScore}</span> ·{' '}
-          <span className="text-sigflo-text/85">{setupTone(signal.setupScore)}</span>
-        </p>
-        <p className="text-right text-sigflo-muted">
-          <span className="font-semibold text-white">{entry}</span>
-        </p>
+        <div className="flex items-center gap-1.5 text-right">
+          <span
+            className="relative h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300/90 shadow-[0_0_10px_-2px_rgba(34,211,238,0.5)] ring-1 ring-cyan-400/25"
+            aria-hidden
+          />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/90">AI Scanner</p>
+        </div>
       </div>
 
-      <div className="mt-2.5 flex items-end justify-between gap-2">
-        <p className="text-[12px] font-semibold text-emerald-300">{action}</p>
-        <p className="text-right text-[10px] text-sigflo-muted/85">
-          {trendCue(signal)} · {momentumCue(signal)}
-        </p>
+      <ul className="mt-2.5 list-none space-y-1.5">
+        {bullets.map((line, i) => (
+          <li key={`${i}-${line.slice(0, 24)}`} className="flex gap-2 text-[12px] font-medium leading-snug text-white/92">
+            <span className="shrink-0 font-bold text-cyan-300/75" aria-hidden>
+              •
+            </span>
+            <span className="min-w-0">{line}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.08] bg-black/35 px-2 py-1.5 ring-1 ring-white/[0.04]">
+        <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted">Readiness</span>
+        <StatusChip label={timingChip.label} state={timingChip.state} />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setReadOpen((o) => !o)}
+        className="mt-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/75 transition hover:text-cyan-100"
+        aria-expanded={readOpen}
+      >
+        {readOpen ? 'Hide full explanation' : 'Full explanation'}
+      </button>
+      {readOpen ? (
+        <p className="mt-1.5 rounded-lg border border-white/[0.06] bg-black/25 p-2 text-[11px] leading-relaxed text-sigflo-muted">
+          {signal.aiExplanation}
+        </p>
+      ) : null}
+
+      <div className="mt-2.5 text-[11px] text-sigflo-muted">
+        Setup: <span className="font-semibold text-white">{signal.setupScore}</span>
+        <span className="text-sigflo-muted"> · </span>
+        <span className="text-sigflo-text/85">{setupTone(signal.setupScore)}</span>
+      </div>
+
+      <p className="mt-1.5 text-[11px] font-semibold leading-snug text-emerald-300/95">{action}</p>
 
       <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/20 p-2">
         <div className="flex flex-wrap gap-1.5">

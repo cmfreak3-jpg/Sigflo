@@ -1,5 +1,8 @@
-import { motion } from 'framer-motion';
+import { motion, useScroll, useTransform, type MotionValue } from 'framer-motion';
 import type { ReactNode } from 'react';
+import { useRef } from 'react';
+import { LandingSectionPixelField } from '@/components/landing/effects/LandingSectionPixelField';
+import { LandingSectionBackdrop } from '@/components/landing/LandingSectionBackdrop';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
 import { ScrollReveal } from '@/components/landing/ScrollReveal';
 
@@ -97,7 +100,7 @@ function PositionRiskMock() {
       </p>
       <div className="mt-2 space-y-2">
         <div className="flex justify-between text-[10px]">
-          <span className="text-landing-muted opacity-90">Notional</span>
+          <span className="text-landing-muted opacity-90">Amount</span>
           <span className="tabular-nums text-landing-text">$4,250</span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-landing-surface">
@@ -146,16 +149,85 @@ const SCREENS = [
   },
 ] as const;
 
-const ROTATE = [-2, 0, 2, 1] as const;
-const BASE_SCALE = [1, 1.05, 1, 1] as const;
+const ROTATE = [-3, 0, 0, 3] as const;
+const BASE_SCALE = [1, 1.09, 1.06, 1] as const;
+const PARALLAX = [18, 36, 24, 10] as const;
+
+function ScreenCard({
+  item,
+  index,
+  scrollYProgress,
+}: {
+  item: (typeof SCREENS)[number];
+  index: number;
+  scrollYProgress: MotionValue<number>;
+}) {
+  const r = ROTATE[index] ?? 0;
+  const sc = BASE_SCALE[index] ?? 1;
+  const parallaxAmt = PARALLAX[index] ?? 20;
+  const yParallax = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [parallaxAmt * 0.35, -parallaxAmt * 0.45],
+  );
+
+  return (
+    <div className={`[perspective:880px] ${index === 1 || index === 2 ? 'lg:z-10' : ''}`}>
+      <motion.div className="relative" style={{ y: yParallax }}>
+        <div
+          className="pointer-events-none absolute left-1/2 top-[42%] h-[85%] w-[92%] -translate-x-1/2 -translate-y-1/2 rounded-[1.25rem] blur-xl"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(0,200,120,0.055) 0%, transparent 70%)',
+          }}
+          aria-hidden
+        />
+        <motion.div
+          initial={{ opacity: 0, y: 22, rotate: r, scale: sc }}
+          whileInView={{ opacity: 1, y: 0, rotate: r, scale: sc }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.42, delay: 0.08 * index, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{
+            rotate: 0,
+            y: -12,
+            scale: sc * 1.02,
+            boxShadow:
+              '0 24px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 200, 120, 0.1), 0 0 36px -14px rgba(0, 200, 120, 0.09)',
+            transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+          }}
+          style={{ transformOrigin: 'center bottom' }}
+          className="relative flex h-full flex-col rounded-2xl border border-white/[0.1] bg-landing-card p-4 shadow-landing-card-strong"
+        >
+          <div className="pointer-events-none mb-3 aspect-[10/16] max-h-[280px] w-full overflow-hidden rounded-lg ring-1 ring-white/[0.06]">
+            <div className="h-full scale-[0.98]">{item.node}</div>
+          </div>
+          <h3 className="text-sm font-semibold text-landing-text">{item.title}</h3>
+          <p className="mt-1 text-xs leading-relaxed text-landing-muted opacity-90">{item.subtitle}</p>
+        </motion.div>
+        <div
+          className="pointer-events-none mx-auto mt-2 h-10 w-[78%] scale-y-50 rounded-[100%] bg-gradient-to-b from-[rgba(0,200,120,0.07)] via-[rgba(0,200,120,0.02)] to-transparent opacity-35 blur-md"
+          aria-hidden
+        />
+      </motion.div>
+    </div>
+  );
+}
 
 export function LandingAppScreens() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start end', 'end start'],
+  });
+
   return (
     <section
+      ref={sectionRef}
       id={LANDING_SECTIONS.screens}
-      className="scroll-mt-24 bg-landing-bg px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32"
+      className="relative scroll-mt-24 overflow-hidden bg-landing-bg px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32"
     >
-      <div className="mx-auto max-w-6xl">
+      <LandingSectionBackdrop variant="screens" />
+      <LandingSectionPixelField count={60} />
+      <div className="relative z-[2] mx-auto max-w-6xl">
         <ScrollReveal>
           <h2 className="text-[1.65rem] font-semibold tracking-tight text-landing-text sm:text-[1.875rem] lg:text-[2.125rem]">
             See Sigflo in action
@@ -166,45 +238,9 @@ export function LandingAppScreens() {
         </ScrollReveal>
 
         <div className="mt-16 grid items-end gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6 lg:pt-4">
-          {SCREENS.map((s, i) => {
-            const r = ROTATE[i] ?? 0;
-            const sc = BASE_SCALE[i] ?? 1;
-            return (
-              <div key={s.title} className={`[perspective:880px] ${i === 1 ? 'lg:z-10' : ''}`}>
-                <div className="relative">
-                  <div
-                    className="pointer-events-none absolute left-1/2 top-[42%] h-[85%] w-[92%] -translate-x-1/2 -translate-y-1/2 rounded-[1.25rem] blur-2xl"
-                    style={{
-                      background: 'radial-gradient(ellipse at center, rgba(0,200,120,0.12) 0%, transparent 68%)',
-                    }}
-                    aria-hidden
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, y: 22, rotate: r, scale: sc }}
-                    whileInView={{ opacity: 1, y: 0, rotate: r, scale: sc }}
-                    viewport={{ once: true, margin: '-40px' }}
-                    transition={{ duration: 0.42, delay: 0.08 * i, ease: [0.22, 1, 0.36, 1] }}
-                    whileHover={{
-                      rotate: 0,
-                      y: -12,
-                      scale: sc * 1.02,
-                      boxShadow:
-                        '0 24px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 200, 120, 0.18), 0 0 48px -12px rgba(0, 200, 120, 0.2)',
-                      transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
-                    }}
-                    style={{ transformOrigin: 'center bottom' }}
-                    className="relative flex h-full flex-col rounded-2xl border border-white/[0.1] bg-landing-card p-4 shadow-landing-card-strong"
-                  >
-                    <div className="pointer-events-none mb-3 aspect-[10/16] max-h-[280px] w-full overflow-hidden rounded-lg ring-1 ring-white/[0.06]">
-                      <div className="h-full scale-[0.98]">{s.node}</div>
-                    </div>
-                    <h3 className="text-sm font-semibold text-landing-text">{s.title}</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-landing-muted opacity-90">{s.subtitle}</p>
-                  </motion.div>
-                </div>
-              </div>
-            );
-          })}
+          {SCREENS.map((s, i) => (
+            <ScreenCard key={s.title} item={s} index={i} scrollYProgress={scrollYProgress} />
+          ))}
         </div>
       </div>
     </section>

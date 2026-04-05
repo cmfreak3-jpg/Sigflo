@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import {
   DEFAULT_AUTOMATION_SAFEGUARDS,
   EXIT_AI_MODE_LABEL,
@@ -242,19 +243,19 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
   const confidenceLowDim = isTrade && confidence?.tier === 'low' ? 'opacity-[0.97]' : '';
 
   return (
-    <div className="mx-auto mt-1.5 w-full max-w-lg px-1.5 pb-0 md:mt-2">
+    <div className="mx-auto w-full max-w-lg px-0 pb-0 pt-0">
       <div
         className={`overflow-visible rounded-xl border border-white/[0.1] bg-gradient-to-b from-white/[0.05] to-black/55 transition-all duration-500 ease-out ring-1 ring-white/[0.06] ${confidenceLowDim}`}
       >
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className={`flex w-full items-start gap-1.5 px-2 py-1.5 text-left transition active:scale-[0.995] md:gap-2 md:px-2 md:py-1.5 ${
+          className={`grid w-full grid-cols-1 items-start gap-x-2 gap-y-1.5 px-2 py-1.5 text-left transition active:scale-[0.995] min-[380px]:grid-cols-[minmax(0,1fr)_auto] md:gap-x-2 md:px-2 md:py-1.5 ${
             open ? 'rounded-t-xl' : 'rounded-xl'
           }`}
           aria-expanded={open}
         >
-          <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="grid min-w-0 grid-cols-1 gap-y-1">
             {isTrade ? (
               <TradeStripTradeHero {...props} exitGuidance={exitGuidance} exitFlash={exitFlash} />
             ) : (
@@ -267,7 +268,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
               nextPlanned={nextPlannedAutomation}
             />
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 sm:gap-1.5">
+          <div className="grid shrink-0 justify-items-end gap-1 justify-self-end min-[380px]:justify-self-stretch sm:gap-1.5">
             <span
               className="text-[9px] font-extrabold uppercase leading-none tracking-[0.18em] text-blue-400 sm:text-[10px]"
               style={{ textShadow: '0 0 14px rgba(96,165,250,0.55), 0 0 28px rgba(96,165,250,0.28)' }}
@@ -311,7 +312,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
           }`}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="border-t border-white/[0.08] bg-black/40 px-2 py-1.5 text-[9px] leading-snug text-sigflo-muted sm:text-[10px]">
+            <div className="border-t border-white/[0.08] bg-black/40 px-2 py-1.5 text-sigflo-muted">
               {isTrade ? (
                 <TradeScenarioPanelTrade {...props} exitGuidance={exitGuidance} />
               ) : (
@@ -330,6 +331,47 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
   );
 }
 
+/** Bordered cell for scenario strip — collapsed hero + expanded grid (terminal-style metrics). */
+function ScenarioMetricCell({
+  label,
+  children,
+  className = '',
+  valueClassName = '',
+  style,
+  density = 'default',
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+  valueClassName?: string;
+  style?: CSSProperties;
+  /** Tighter padding/type for 4-across hero rows on narrow viewports. */
+  density?: 'default' | 'compact';
+}) {
+  const pad =
+    density === 'compact'
+      ? 'px-1 py-1 sm:px-1.5 sm:py-1.5'
+      : 'px-2 py-1.5';
+  const radius = density === 'compact' ? 'rounded sm:rounded-md' : 'rounded-md';
+  const labelCls =
+    density === 'compact'
+      ? 'text-[6px] font-semibold uppercase tracking-wide text-sigflo-muted sm:text-[7px] sm:tracking-wider'
+      : 'text-[8px] font-semibold uppercase tracking-wider text-sigflo-muted';
+  const valueGap = density === 'compact' ? 'mt-px' : 'mt-0.5';
+  const valueSize =
+    density === 'compact' ? 'text-[9px] leading-tight sm:text-[10px]' : 'text-[11px] leading-tight';
+
+  return (
+    <div
+      className={`min-w-0 border border-white/[0.08] bg-black/35 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] ${radius} ${pad} ${className}`}
+      style={style}
+    >
+      <p className={labelCls}>{label}</p>
+      <div className={`${valueGap} ${valueSize} text-white ${valueClassName}`}>{children}</div>
+    </div>
+  );
+}
+
 function TradeStripTradeHero(
   props: TradeChartScenarioStripTradeProps & {
     exitGuidance: ExitGuidance | null;
@@ -344,48 +386,64 @@ function TradeStripTradeHero(
   const exitColor = eg ? exitStateColor(eg.state) : ACCENT;
 
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0 leading-none">
-        <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Est. PnL</span>
-        <span className={`text-base font-bold tabular-nums tracking-tight sm:text-lg ${pnlClass}`}>
-          {fmtUsdSigned(props.estimatedPnlUsd)}
-        </span>
-        <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
-          ({props.estimatedPnlPct >= 0 ? '+' : ''}
-          {props.estimatedPnlPct.toFixed(1)}%)
-        </span>
-      </div>
-      {eg ? (
-        <p
-          className={`mt-0.5 text-[7px] font-semibold uppercase tracking-[0.14em] transition-all duration-300 ${
-            props.exitFlash ? 'rounded-sm px-0.5 py-px' : ''
-          }`}
-          style={{
-            color: exitColor,
-            boxShadow: props.exitFlash ? `0 0 14px ${exitColor}55` : undefined,
-          }}
-        >
-          Exit: {eg.headline}
-        </p>
-      ) : null}
-      <div className="mt-1 grid w-full min-w-0 grid-cols-3 gap-x-2 gap-y-0 text-[8px] leading-tight sm:text-[9px]">
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">Entry</p>
-          <p className="truncate font-semibold tabular-nums text-white">${formatQuoteNumber(props.entry)}</p>
+    <div className="grid min-w-0 grid-cols-1 gap-1">
+      <ScenarioMetricCell label="Est. PnL">
+        <div className={`flex flex-wrap items-baseline gap-x-1.5 leading-none ${pnlClass}`}>
+          <span className={`text-base font-bold tabular-nums tracking-tight sm:text-lg ${pnlClass}`}>
+            {fmtUsdSigned(props.estimatedPnlUsd)}
+          </span>
+          <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
+            ({props.estimatedPnlPct >= 0 ? '+' : ''}
+            {props.estimatedPnlPct.toFixed(1)}%)
+          </span>
         </div>
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">Liq</p>
-          <p className="truncate font-semibold tabular-nums text-amber-200/95">
+      </ScenarioMetricCell>
+      <div
+        className={`grid min-w-0 gap-0.5 sm:gap-1 ${eg ? 'grid-cols-4' : 'grid-cols-3'}`}
+      >
+        {eg ? (
+          <ScenarioMetricCell
+            label="Exit"
+            density="compact"
+            className="transition-all duration-300"
+            style={
+              props.exitFlash
+                ? {
+                    backgroundColor: `${exitColor}14`,
+                    boxShadow: `inset 0 0 0 1px ${exitColor}40`,
+                  }
+                : undefined
+            }
+          >
+            <span
+              className="truncate font-bold uppercase tracking-tight sm:tracking-[0.08em]"
+              style={{
+                color: exitColor,
+                textShadow: props.exitFlash ? `0 0 8px ${exitColor}66` : undefined,
+              }}
+            >
+              {eg.headline}
+            </span>
+          </ScenarioMetricCell>
+        ) : null}
+        <ScenarioMetricCell label="Entry" density="compact">
+          <span className="truncate font-semibold tabular-nums">${formatQuoteNumber(props.entry)}</span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="Liq" density="compact" valueClassName="text-amber-200/95">
+          <span className="truncate font-semibold tabular-nums">
             {props.liqPrice != null ? `$${formatQuoteNumber(props.liqPrice)}` : '—'}
-          </p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">ROI</p>
-          <p className="truncate font-bold tabular-nums" style={{ color: ACCENT }}>
+          </span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell
+          label="ROI"
+          density="compact"
+          valueClassName={roiPct >= 0 ? 'text-[#00ffc8]' : 'text-rose-300'}
+        >
+          <span className="truncate font-bold tabular-nums">
             {roiPct >= 0 ? '+' : ''}
             {Math.round(roiPct)}%
-          </p>
-        </div>
+          </span>
+        </ScenarioMetricCell>
       </div>
     </div>
   );
@@ -402,41 +460,55 @@ function TradeStripManageHero(
   const exitColor = eg ? exitStateColor(eg.state) : ACCENT;
 
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0 leading-none">
-        <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Open PnL</span>
-        <span className={`text-base font-bold tabular-nums sm:text-lg ${pnlClass}`}>{fmtUsdSigned(props.pnlUsd)}</span>
-        <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
-          ({props.pnlPct >= 0 ? '+' : ''}
-          {props.pnlPct.toFixed(1)}%)
-        </span>
-      </div>
-      {eg ? (
-        <p
-          className={`mt-0.5 text-[7px] font-semibold uppercase tracking-[0.14em] transition-all duration-300 ${
-            props.exitFlash ? 'rounded-sm px-0.5 py-px' : ''
-          }`}
-          style={{
-            color: exitColor,
-            boxShadow: props.exitFlash ? `0 0 14px ${exitColor}55` : undefined,
-          }}
-        >
-          Exit: {eg.headline}
-        </p>
-      ) : null}
-      <div className="mt-1 grid w-full min-w-0 grid-cols-3 gap-x-2 gap-y-0 text-[8px] leading-tight sm:text-[9px]">
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">Pair</p>
-          <p className="truncate font-semibold text-white">{props.pair}</p>
+    <div className="grid min-w-0 grid-cols-1 gap-1">
+      <ScenarioMetricCell label="Open PnL">
+        <div className={`flex flex-wrap items-baseline gap-x-1.5 leading-none ${pnlClass}`}>
+          <span className={`text-base font-bold tabular-nums sm:text-lg ${pnlClass}`}>
+            {fmtUsdSigned(props.pnlUsd)}
+          </span>
+          <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
+            ({props.pnlPct >= 0 ? '+' : ''}
+            {props.pnlPct.toFixed(1)}%)
+          </span>
         </div>
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">Entry</p>
-          <p className="truncate font-semibold tabular-nums text-white">${formatQuoteNumber(props.entry)}</p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-sigflo-muted">Mark</p>
-          <p className="truncate font-semibold tabular-nums text-white">${formatQuoteNumber(props.mark)}</p>
-        </div>
+      </ScenarioMetricCell>
+      <div
+        className={`grid min-w-0 gap-0.5 sm:gap-1 ${eg ? 'grid-cols-4' : 'grid-cols-3'}`}
+      >
+        {eg ? (
+          <ScenarioMetricCell
+            label="Exit"
+            density="compact"
+            className="transition-all duration-300"
+            style={
+              props.exitFlash
+                ? {
+                    backgroundColor: `${exitColor}14`,
+                    boxShadow: `inset 0 0 0 1px ${exitColor}40`,
+                  }
+                : undefined
+            }
+          >
+            <span
+              className="truncate font-bold uppercase tracking-tight sm:tracking-[0.08em]"
+              style={{
+                color: exitColor,
+                textShadow: props.exitFlash ? `0 0 8px ${exitColor}66` : undefined,
+              }}
+            >
+              {eg.headline}
+            </span>
+          </ScenarioMetricCell>
+        ) : null}
+        <ScenarioMetricCell label="Pair" density="compact">
+          <span className="truncate font-semibold">{props.pair}</span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="Entry" density="compact">
+          <span className="truncate font-semibold tabular-nums">${formatQuoteNumber(props.entry)}</span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="Mark" density="compact">
+          <span className="truncate font-semibold tabular-nums">${formatQuoteNumber(props.mark)}</span>
+        </ScenarioMetricCell>
       </div>
     </div>
   );
@@ -458,25 +530,30 @@ function ExitAutomationMicroSummary(props: {
     props.exitAiMode === 'manual' ? '—' : EXIT_STRATEGY_LABEL[props.strategyPreset];
   const confColor = exitConfidenceColor(props.guidance.confidenceLabel);
   const stateColor = exitStateColor(props.guidance.state);
+  const modeLabel = EXIT_AI_MODE_LABEL[props.exitAiMode];
+  const ariaSummary = `Exit AI ${modeLabel}, strategy ${strat}. ${props.guidance.headline}. Next: ${props.nextPlanned}. Confidence ${props.guidance.confidenceLabel}.`;
 
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-1.5 py-1 text-[6px] leading-relaxed sm:text-[7px]">
-      <p className="font-semibold uppercase tracking-[0.1em] text-sigflo-muted">
-        Exit AI: <span className="text-sigflo-text">{EXIT_AI_MODE_LABEL[props.exitAiMode]}</span>
-        <span className="mx-1 text-white/20">·</span>
-        Strategy: <span className="text-sigflo-text/90">{strat}</span>
+    <div
+      role="status"
+      aria-label={ariaSummary}
+      className="rounded border border-white/[0.06] bg-white/[0.02] px-1 py-[3px] sm:py-0.5"
+    >
+      <p className="truncate text-[6px] font-medium leading-none text-sigflo-muted sm:text-[7px]">
+        <span className="font-semibold uppercase tracking-[0.12em]">Exit AI</span>{' '}
+        <span className="normal-case tracking-tight text-sigflo-text/95">{modeLabel}</span>
+        <span className="mx-0.5 text-white/18">·</span>
+        <span className="font-semibold uppercase tracking-[0.12em]">Strat</span>{' '}
+        <span className="normal-case tracking-tight text-sigflo-text/88">{strat}</span>
       </p>
-      <p className="mt-0.5 text-sigflo-muted">
-        State:{' '}
-        <span className="font-bold" style={{ color: stateColor }}>
+      <p className="mt-0.5 truncate text-[9px] leading-snug text-sigflo-muted sm:text-[10px]">
+        <span className="font-bold uppercase tracking-[0.08em]" style={{ color: stateColor }}>
           {props.guidance.headline}
         </span>
-        <span className="mx-1 text-white/20">·</span>
-        <span className="text-sigflo-text/85">Next: {props.nextPlanned}</span>
-      </p>
-      <p className="mt-0.5 text-sigflo-muted">
-        Confidence:{' '}
-        <span className="font-semibold" style={{ color: confColor }}>
+        <span className="mx-0.5 text-white/15">·</span>
+        <span className="font-medium normal-case tracking-tight text-sigflo-text/88">{props.nextPlanned}</span>
+        <span className="mx-0.5 text-white/15">·</span>
+        <span className="font-semibold uppercase tracking-[0.1em]" style={{ color: confColor }}>
           {props.guidance.confidenceLabel}
         </span>
       </p>
@@ -491,7 +568,7 @@ function ExitGuidanceExpandedBlock({ eg }: { eg: ExitGuidance | null }) {
 
   return (
     <div
-      className="col-span-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors duration-300"
+      className="col-span-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors duration-300 sm:col-span-3"
       style={{ boxShadow: `inset 0 0 0 1px ${stroke}22` }}
     >
       <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: stroke }}>
@@ -521,69 +598,62 @@ function TradeScenarioPanelTrade(
   props: TradeChartScenarioStripTradeProps & { exitGuidance: ExitGuidance | null },
 ) {
   return (
-    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-white">
+    <div className="grid grid-cols-2 gap-1.5 text-white sm:grid-cols-3">
       <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Notional</p>
-        <p className="font-semibold tabular-nums">${Math.round(props.positionSizeUsd).toLocaleString('en-US')}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Leverage</p>
-        <p className="font-semibold tabular-nums">{props.isFutures ? `${props.leverage}x` : '1× spot'}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Margin</p>
-        <p className="font-semibold tabular-nums">${Math.round(props.marginUsd).toLocaleString('en-US')}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Est. fee (rt)</p>
-        <p className="font-semibold tabular-nums">${props.estFeeUsd.toFixed(2)}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Entry</p>
-        <p className="font-semibold tabular-nums">
+      <ScenarioMetricCell label="Size">
+        <span className="tabular-nums">${Math.round(props.positionSizeUsd).toLocaleString('en-US')}</span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Leverage">
+        <span className="tabular-nums">{props.isFutures ? `${props.leverage}x` : '1× spot'}</span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Margin">
+        <span className="tabular-nums">${Math.round(props.marginUsd).toLocaleString('en-US')}</span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Est. fee (rt)">
+        <span className="tabular-nums">${props.estFeeUsd.toFixed(2)}</span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Entry">
+        <span className="font-semibold tabular-nums">
           <span className="text-sigflo-muted/80">$</span>
           {formatQuoteNumber(props.entry)}
-        </p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Stop</p>
-        <p className="font-semibold tabular-nums text-rose-200/95">
+        </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Stop" valueClassName="text-rose-200/95">
+        <span className="font-semibold tabular-nums">
           <span className="text-sigflo-muted/80">$</span>
           {formatQuoteNumber(props.stop)}
-        </p>
-      </div>
-      <div className="col-span-2">
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Target</p>
-        <p className="font-semibold tabular-nums text-emerald-200/95">
+        </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Target" className="col-span-2 sm:col-span-3" valueClassName="text-emerald-200/95">
+        <span className="font-semibold tabular-nums">
           <span className="text-sigflo-muted/80">$</span>
           {formatQuoteNumber(props.target)}
-        </p>
-      </div>
+        </span>
+      </ScenarioMetricCell>
       {props.liqPrice != null ? (
-        <div className="col-span-2 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-1.5 py-1">
-          <p className="text-[9px] uppercase tracking-wider text-amber-200/80">Est. liquidation</p>
-          <p className="font-bold tabular-nums text-amber-100">
+        <div className="col-span-2 rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-2 py-1.5 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.06)] sm:col-span-3">
+          <p className="text-[8px] font-semibold uppercase tracking-wider text-amber-200/85">Est. liquidation</p>
+          <p className="mt-0.5 font-bold tabular-nums text-amber-100">
             <span className="text-amber-200/70">$</span>
             {formatQuoteNumber(props.liqPrice)}
           </p>
         </div>
       ) : null}
-      <div className="col-span-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
-        <span>
-          <span className="text-sigflo-muted">PnL @ target </span>
-          <span className="font-semibold text-emerald-300">{fmtUsdSigned(props.targetProfitUsd)}</span>
-        </span>
-        <span>
-          <span className="text-sigflo-muted">PnL @ stop </span>
-          <span className="font-semibold text-rose-300">{fmtUsdSigned(props.stopLossUsd)}</span>
-        </span>
-        <span style={{ color: ACCENT }} className="font-semibold">
-          RR 1:{props.riskReward >= 10 ? props.riskReward.toFixed(0) : props.riskReward.toFixed(1)}
-        </span>
-        <span>
-          Score: <span className="text-white">{props.tradeScore}</span> / setup {props.setupScore}
-        </span>
+      <div className="col-span-2 grid grid-cols-2 gap-1.5 sm:col-span-3 sm:grid-cols-4">
+        <ScenarioMetricCell label="PnL @ target" valueClassName="text-emerald-300">
+          <span className="tabular-nums">{fmtUsdSigned(props.targetProfitUsd)}</span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="PnL @ stop" valueClassName="text-rose-300">
+          <span className="tabular-nums">{fmtUsdSigned(props.stopLossUsd)}</span>
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="R:R" valueClassName="font-semibold tabular-nums text-[#00ffc8]">
+          1:{props.riskReward >= 10 ? props.riskReward.toFixed(0) : props.riskReward.toFixed(1)}
+        </ScenarioMetricCell>
+        <ScenarioMetricCell label="Scores">
+          <span className="tabular-nums text-white">
+            {props.tradeScore} <span className="text-sigflo-muted">/</span> {props.setupScore}
+          </span>
+        </ScenarioMetricCell>
       </div>
     </div>
   );
@@ -593,34 +663,31 @@ function TradeScenarioPanelManage(
   props: TradeChartScenarioStripManageProps & { exitGuidance: ExitGuidance | null },
 ) {
   return (
-    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-white">
+    <div className="grid grid-cols-2 gap-1.5 text-white sm:grid-cols-3">
       <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Pair</p>
-        <p className="font-semibold">{props.pair}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Side</p>
-        <p className={`font-bold uppercase ${props.side === 'long' ? 'text-emerald-300' : 'text-rose-300'}`}>{props.side}</p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Entry</p>
-        <p className="font-semibold tabular-nums">
+      <ScenarioMetricCell label="Pair">
+        <span className="truncate font-semibold">{props.pair}</span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Side">
+        <span className={`font-bold uppercase ${props.side === 'long' ? 'text-emerald-300' : 'text-rose-300'}`}>
+          {props.side}
+        </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Entry">
+        <span className="font-semibold tabular-nums">
           <span className="text-sigflo-muted/80">$</span>
           {formatQuoteNumber(props.entry)}
-        </p>
-      </div>
-      <div>
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Mark</p>
-        <p className="font-semibold tabular-nums">
+        </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Mark">
+        <span className="font-semibold tabular-nums">
           <span className="text-sigflo-muted/80">$</span>
           {formatQuoteNumber(props.mark)}
-        </p>
-      </div>
-      <div className="col-span-2">
-        <p className="text-[9px] uppercase tracking-wider text-sigflo-muted">Size</p>
-        <p className="font-semibold">{props.sizeLabel}</p>
-      </div>
+        </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Size" className="col-span-2">
+        <span className="font-semibold">{props.sizeLabel}</span>
+      </ScenarioMetricCell>
     </div>
   );
 }

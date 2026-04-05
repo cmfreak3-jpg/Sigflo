@@ -4,6 +4,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  CrosshairMode,
   HistogramSeries,
   LineSeries,
   TickMarkType,
@@ -13,11 +14,18 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
+import { SetupToggle } from '@/components/trade/SetupToggle';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
+import { hexToRgba } from '@/lib/chartColorUtils';
+import { tradeTimingOverlayVisual, type TradeTimingChipState } from '@/lib/tradeTimingChip';
 import { formatQuoteNumber, formatQuoteUsd } from '@/lib/formatQuote';
 import type { MarketMode, TradeViewModel } from '@/types/trade';
 
+/**
+ * Chart surface: Lightweight Charts plot, interval chips, `SetupToggle` (Clean vs Setup overlays).
+ * Overlay series use ease-out fade in `SETUP_LINE_ANIM_MS`; line weight/opacity from `tradeTimingOverlayVisual`.
+ */
 type LevelKey = 'last' | 'entry' | 'stop' | 'target' | 'liquidation';
 
 const levelStyles: Record<
@@ -30,6 +38,9 @@ const levelStyles: Record<
   target: { label: 'Target', stroke: '#a7f3d0', labelClass: 'text-emerald-200' },
   liquidation: { label: 'Liq.', stroke: '#fbbf24', labelClass: 'text-amber-200' },
 };
+
+/** Ease-out fade for setup overlays (entry / stop / target / liq). */
+const SETUP_LINE_ANIM_MS = 175;
 
 function toUtcTime(tsMs: number): UTCTimestamp {
   return Math.floor(tsMs / 1000) as UTCTimestamp;
@@ -96,6 +107,9 @@ export function PriceChartCard({
   chartPlotHeightPx,
   exchangeStyleHero = false,
   metaCaption,
+  setupMode,
+  onSetupModeToggle,
+  tradeTimingState,
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -115,6 +129,11 @@ export function PriceChartCard({
   exchangeStyleHero?: boolean;
   /** e.g. "PERP · Funding +0.010%" (shown beside chart overlay toggles when `exchangeStyleHero`). */
   metaCaption?: string;
+  /** When set, parent controls trade overlays: false = hidden, true = entry/stop/target (+ liq on perps). */
+  setupMode?: boolean;
+  onSetupModeToggle?: () => void;
+  /** When Setup overlays are on, scales line alpha / entry emphasis from timing chip state. */
+  tradeTimingState?: TradeTimingChipState;
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
@@ -122,6 +141,12 @@ export function PriceChartCard({
   const exchangeTfHero =
     Boolean(exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange);
   const showLiquidation = market === 'futures';
+  const setupControlled = typeof setupMode === 'boolean';
+  const prevSetupOnRef = useRef<boolean | undefined>(undefined);
+  /** One-shot: animate setup lines in only when entering Setup mode (not when toggling individual levels). */
+  const setupFadeInArmRef = useRef(false);
+  /** Last timed alpha used for setup lines — so fade-out matches visibility when leaving Setup. */
+  const lastSetupAlphaScaleRef = useRef(1);
   const [showVolume, setShowVolume] = useState(true);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'flat'>('flat');
   /** Single plot host — fixed height + overflow-hidden; autoSize tracks this element. */
@@ -138,6 +163,64 @@ export function PriceChartCard({
     target: false,
     liquidation: false,
   });
+  /** Set when leaving Clean via a single overlay chip — next Setup entry shows only that level. */
+  const [soloOverlayFromClean, setSoloOverlayFromClean] = useState<LevelKey | null>(null);
+  /** Tracks market futures/spot for liq sync (avoid forcing liq on every Setup toggle). */
+  const prevShowLiqForSyncRef = useRef(showLiquidation);
+  const prevSetupModeForSoloRef = useRef(setupMode);
+
+  useEffect(() => {
+    if (setupControlled && prevSetupModeForSoloRef.current === true && setupMode === false) {
+      setSoloOverlayFromClean(null);
+    }
+    prevSetupModeForSoloRef.current = setupMode;
+  }, [setupMode, setupControlled]);
+
+  useEffect(() => {
+    if (!setupControlled) return;
+    if (!setupMode) {
+      prevSetupOnRef.current = false;
+      return;
+    }
+    const wasOn = prevSetupOnRef.current === true;
+    prevSetupOnRef.current = true;
+    if (wasOn) return;
+    setupFadeInArmRef.current = true;
+
+    const solo = soloOverlayFromClean;
+    if (solo != null) {
+      setSoloOverlayFromClean(null);
+      setVisibleLevels({
+        last: solo === 'last',
+        entry: solo === 'entry',
+        stop: solo === 'stop',
+        target: solo === 'target',
+        liquidation: solo === 'liquidation' && showLiquidation,
+      });
+      prevShowLiqForSyncRef.current = showLiquidation;
+      return;
+    }
+
+    setVisibleLevels({
+      last: true,
+      entry: true,
+      stop: true,
+      target: true,
+      liquidation: showLiquidation,
+    });
+    prevShowLiqForSyncRef.current = showLiquidation;
+  }, [setupMode, setupControlled, showLiquidation, soloOverlayFromClean]);
+
+  /** Futures ↔ spot: update liq overlay only when `showLiquidation` actually changes in Setup. */
+  useEffect(() => {
+    if (!setupControlled || !setupMode) {
+      prevShowLiqForSyncRef.current = showLiquidation;
+      return;
+    }
+    if (prevShowLiqForSyncRef.current === showLiquidation) return;
+    prevShowLiqForSyncRef.current = showLiquidation;
+    setVisibleLevels((prev) => ({ ...prev, liquidation: showLiquidation }));
+  }, [showLiquidation, setupMode, setupControlled]);
 
   const visibleLevelKeys = useMemo(
     () =>
@@ -146,6 +229,20 @@ export function PriceChartCard({
         .filter((key) => visibleLevels[key]),
     [showLiquidation, visibleLevels],
   );
+
+  const useTimedSetupOverlays = setupControlled && setupMode && tradeTimingState != null;
+  const setupOverlayVisual = useMemo(() => {
+    if (!useTimedSetupOverlays || tradeTimingState == null) {
+      return { alphaScale: 1, entryLineExtraWidth: 0 };
+    }
+    return tradeTimingOverlayVisual(tradeTimingState);
+  }, [tradeTimingState, useTimedSetupOverlays]);
+
+  useEffect(() => {
+    if (useTimedSetupOverlays) {
+      lastSetupAlphaScaleRef.current = setupOverlayVisual.alphaScale;
+    }
+  }, [useTimedSetupOverlays, setupOverlayVisual.alphaScale]);
 
   const liveTime = liveUpdatedAt
     ? new Date(liveUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -177,12 +274,16 @@ export function PriceChartCard({
       layout: {
         background: { type: ColorType.Solid, color: 'rgba(12,12,15,0.9)' },
         textColor: 'rgba(148,163,184,0.9)',
-        /** Drives time + price scale label metrics; primary lever for a shorter time-scale band. */
-        fontSize: 7,
+        /** Drives time + price scale label metrics (shared by lightweight-charts). */
+        fontSize: 12,
       },
       grid: {
         vertLines: { color: 'rgba(255,255,255,0.03)' },
         horzLines: { color: 'rgba(255,255,255,0.06)' },
+      },
+      /** Default is Magnet/MagnetOHLC — snaps to bar OHLC; Normal follows the cursor. */
+      crosshair: {
+        mode: CrosshairMode.Normal,
       },
       rightPriceScale: {
         borderColor: 'rgba(255,255,255,0.12)',
@@ -236,6 +337,14 @@ export function PriceChartCard({
     /** Larger `top` = thinner volume band at bottom of pane (frees height for candles + time row feels shorter). */
     volSeries.priceScale().applyOptions({
       scaleMargins: { top: 0.91, bottom: 0 },
+    });
+
+    /** Default right scale uses ~10% bottom margin — pulls candles away from the time axis. Tighten so time labels sit just under the plot. */
+    chart.priceScale('right').applyOptions({
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.02,
+      },
     });
 
     chartRef.current = chart;
@@ -380,6 +489,19 @@ export function PriceChartCard({
       }
     }
 
+    const strokeFor = (key: LevelKey) => {
+      const style = levelStyles[key];
+      if (useTimedSetupOverlays) {
+        return hexToRgba(style.stroke, setupOverlayVisual.alphaScale);
+      }
+      return style.stroke;
+    };
+    const widthFor = (key: LevelKey): 1 | 2 | 3 | 4 => {
+      if (key !== 'entry') return 1;
+      const w = 2 + (useTimedSetupOverlays ? setupOverlayVisual.entryLineExtraWidth : 0);
+      return (w <= 4 ? w : 4) as 1 | 2 | 3 | 4;
+    };
+
     for (const key of visibleLevelKeys) {
       if (key === 'last') {
         if (!priceLineByKeyRef.current.last) {
@@ -400,21 +522,143 @@ export function PriceChartCard({
       if (existing) {
         existing.applyOptions({
           price,
-          color: style.stroke,
-          lineWidth: key === 'entry' ? 2 : 1,
+          color: strokeFor(key),
+          lineWidth: widthFor(key),
           title: style.label,
         });
       } else {
         priceLineByKeyRef.current[key] = candleSeries.createPriceLine({
           price,
-          color: style.stroke,
-          lineWidth: key === 'entry' ? 2 : 1,
+          color: strokeFor(key),
+          lineWidth: widthFor(key),
           axisLabelVisible: true,
           title: style.label,
         });
       }
     }
-  }, [staticLevelPrices, visibleLevelKeys]);
+  }, [staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
+
+  useEffect(() => {
+    if (!setupControlled || setupMode) return;
+
+    const setupKeys = (
+      ['entry', 'stop', 'target', ...(showLiquidation ? (['liquidation'] as const) : [])] as LevelKey[]
+    ).filter((k) => priceLineByKeyRef.current[k]);
+
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+
+    if (setupKeys.length === 0) {
+      setVisibleLevels((p) => ({
+        ...p,
+        last: false,
+        entry: false,
+        stop: false,
+        target: false,
+        liquidation: false,
+      }));
+      return;
+    }
+
+    let raf = 0;
+    let cancelled = false;
+    const start = performance.now();
+
+    const cap = lastSetupAlphaScaleRef.current;
+    const step = (now: number) => {
+      if (cancelled) return;
+      const p = Math.min(1, (now - start) / SETUP_LINE_ANIM_MS);
+      const alpha = easeOut(1 - p) * cap;
+      for (const key of setupKeys) {
+        const line = priceLineByKeyRef.current[key];
+        if (line) line.applyOptions({ color: hexToRgba(levelStyles[key].stroke, alpha) });
+      }
+      if (p < 1) {
+        raf = requestAnimationFrame(step);
+      } else {
+        setVisibleLevels((prev) => ({
+          ...prev,
+          last: false,
+          entry: false,
+          stop: false,
+          target: false,
+          liquidation: false,
+        }));
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [setupMode, showLiquidation, setupControlled]);
+
+  useEffect(() => {
+    if (!setupControlled || !setupMode) return;
+    if (!setupFadeInArmRef.current) return;
+
+    const keys = (
+      ['entry', 'stop', 'target', 'last', ...(showLiquidation ? (['liquidation'] as const) : [])] as LevelKey[]
+    ).filter((k) => visibleLevels[k]);
+
+    if (keys.length === 0) return;
+
+    setupFadeInArmRef.current = false;
+
+    let cancelled = false;
+    let raf = 0;
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+    const cap = useTimedSetupOverlays ? setupOverlayVisual.alphaScale : 1;
+
+    const run = () => {
+      for (const key of keys) {
+        const line = priceLineByKeyRef.current[key];
+        if (line) line.applyOptions({ color: hexToRgba(levelStyles[key].stroke, 0) });
+      }
+      const start = performance.now();
+      const step = (now: number) => {
+        if (cancelled) return;
+        const p = Math.min(1, (now - start) / SETUP_LINE_ANIM_MS);
+        const t = easeOut(p);
+        for (const key of keys) {
+          const line = priceLineByKeyRef.current[key];
+          if (line) {
+            const stroke = levelStyles[key].stroke;
+            const peak = key === 'last' || !useTimedSetupOverlays ? 1 : cap;
+            line.applyOptions({ color: hexToRgba(stroke, t * peak) });
+          }
+        }
+        if (p < 1) {
+          raf = requestAnimationFrame(step);
+        } else {
+          for (const key of keys) {
+            const line = priceLineByKeyRef.current[key];
+            if (line) {
+              const stroke = levelStyles[key].stroke;
+              line.applyOptions({
+                color:
+                  key === 'last' || !useTimedSetupOverlays ? stroke : hexToRgba(stroke, cap),
+              });
+            }
+          }
+        }
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    const id = requestAnimationFrame(() => requestAnimationFrame(run));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(id);
+    };
+  }, [
+    setupMode,
+    visibleLevelKeys,
+    showLiquidation,
+    setupControlled,
+    useTimedSetupOverlays,
+    setupOverlayVisual.alphaScale,
+  ]);
 
   useEffect(() => {
     const line = priceLineByKeyRef.current.last;
@@ -466,13 +710,16 @@ export function PriceChartCard({
     </span>
   );
 
+  /** Clean mode: overlay chips still click — first tap turns on Setup so levels can render. */
+  const setupGated = setupControlled && !setupMode;
+
   return (
     <Card
       className="overflow-hidden border-white/[0.1] bg-gradient-to-b from-white/[0.06] via-sigflo-surface to-black/35 p-1.5 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] backdrop-blur-md md:p-2"
       style={{ ['--chart-h-desktop' as string]: `${chartHeightPx}px` }}
     >
       {exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
-        <div className="mb-0 flex min-w-0 w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
+        <div className="mb-0 flex min-w-0 w-full flex-wrap items-end justify-between gap-x-2 gap-y-1 border-b border-white/[0.06] bg-black/20 px-[4.5px] pb-[3px] pt-px md:gap-x-2.5 md:px-[5.5px] md:pb-[3.5px] md:pt-[2px]">
           <div className="flex min-w-0 shrink-0 items-baseline gap-2 md:gap-[4.5px]">
             <span
               className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
@@ -487,8 +734,8 @@ export function PriceChartCard({
               {change.toFixed(2)}%)
             </span>
           </div>
-          <div className="flex min-w-0 shrink-0 items-center justify-end gap-[3.5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-[4.5px]">
-            <div className="flex w-max shrink-0 items-center gap-[3.5px] md:gap-[4.5px]">
+          <div className="flex min-w-0 shrink-0 items-end justify-end gap-[3.5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-[4.5px]">
+            <div className="flex w-max shrink-0 items-end gap-[3.5px] md:gap-[4.5px]">
               {timeframeOptions.map((intv) => (
                 <button
                   key={intv.value}
@@ -504,8 +751,13 @@ export function PriceChartCard({
                 </button>
               ))}
             </div>
+            {onSetupModeToggle ? (
+              <div className="shrink-0">
+                <SetupToggle isActive={setupMode === true} onToggle={onSetupModeToggle} />
+              </div>
+            ) : null}
             <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
-            <div className="flex shrink-0 items-center">{perpTimeCluster}</div>
+            <div className="flex shrink-0 items-end pb-px">{perpTimeCluster}</div>
           </div>
         </div>
       ) : heroPairLabel ? (
@@ -662,19 +914,33 @@ export function PriceChartCard({
                 <button
                   key={key}
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (setupGated) {
+                      setSoloOverlayFromClean(key);
+                      onSetupModeToggle?.();
+                      return;
+                    }
                     setVisibleLevels((prev) => ({
                       ...prev,
                       [key]: !prev[key],
-                    }))
+                    }));
+                  }}
+                  title={
+                    setupGated
+                      ? `Clean view — tap to show only ${levelStyles[key].label} in Setup`
+                      : undefined
                   }
                   className={`rounded-sm px-[5.5px] py-[3.5px] transition md:px-[7px] md:py-[3px] ${
+                    setupGated ? 'opacity-70 ring-1 ring-white/[0.06] hover:opacity-95' : ''
+                  } ${
                     visibleLevels[key]
                       ? `${levelStyles[key].labelClass} bg-white/[0.08] ring-1 ring-white/15`
                       : 'bg-white/[0.03] text-sigflo-muted'
                   }`}
                   aria-pressed={visibleLevels[key]}
-                  aria-label={`Toggle ${levelStyles[key].label} level`}
+                  aria-label={
+                    setupGated ? `Enable setup overlays (${levelStyles[key].label})` : `Toggle ${levelStyles[key].label} level`
+                  }
                 >
                   {levelStyles[key].label}
                 </button>

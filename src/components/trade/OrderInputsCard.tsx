@@ -161,7 +161,7 @@ export function OrderInputsCard(props: {
       </div>
 
       <label className="block space-y-1">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Notional (USD)</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Amount (USD)</span>
         <div className="group relative">
           <input
             type="number"
@@ -291,7 +291,7 @@ export function OrderInputsCard(props: {
           </div>
         </div>
       ) : (
-        <p className="rounded-lg border border-white/[0.06] bg-black/25 px-2.5 py-1.5 text-center text-[10px] font-semibold text-sigflo-muted">Spot · 1× notional</p>
+        <p className="rounded-lg border border-white/[0.06] bg-black/25 px-2.5 py-1.5 text-center text-[10px] font-semibold text-sigflo-muted">Spot · no leverage</p>
       )}
 
       {showLevels ? (
@@ -515,7 +515,7 @@ export function OrderInputsCard(props: {
 
       <div className="flex items-center justify-between border-t border-white/[0.06] pt-2 text-[10px]">
         <span className="text-sigflo-muted">
-          {money(positionSizeUsd)} notional · {walletUsedPct.toFixed(1)}% wallet
+          {money(positionSizeUsd)} · {walletUsedPct.toFixed(1)}% of wallet
         </span>
         {hideLiquidationFooter || compactStats?.riskMeterPct != null ? null : (
           <span className={`font-semibold ${riskColor}`}>Liq risk: {liquidationRisk}</span>

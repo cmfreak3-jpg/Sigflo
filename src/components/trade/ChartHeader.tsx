@@ -10,6 +10,7 @@ export type ChartHeaderProps = Omit<ComponentProps<typeof PriceChartCard>, 'char
 
 /**
  * Sticky trade chart block with a collapsible plot height driven by scroll on `.trade-scroll`.
+ * Forwards interval, `setupMode`, and timing props into `PriceChartCard`.
  */
 export function ChartHeader({
   collapsed,

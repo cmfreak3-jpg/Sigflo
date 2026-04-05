@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Fragment } from 'react';
+import { LandingSectionBackdrop } from '@/components/landing/LandingSectionBackdrop';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
 import { ScrollReveal } from '@/components/landing/ScrollReveal';
 
@@ -50,25 +51,19 @@ const STEPS = [
   },
 ] as const;
 
-function StepConnector() {
+function FlowConnector() {
   return (
     <div
-      className="hidden shrink-0 flex-col justify-center self-stretch pt-10 opacity-[0.28] md:flex"
+      className="relative hidden h-12 w-12 shrink-0 self-center overflow-hidden md:flex md:w-16 lg:w-20"
       aria-hidden
     >
-      <div className="flex items-center gap-0.5">
-        <div className="h-px w-6 bg-gradient-to-r from-landing-accent/50 to-transparent" />
-        <svg className="h-3 w-3 text-landing-accent/60" viewBox="0 0 12 12" fill="none">
-          <path
-            d="M2.5 6h5.5m0 0L6 3.5M8 6 6 8.5"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <div className="h-px w-6 bg-gradient-to-l from-landing-accent/40 to-transparent" />
-      </div>
+      <div className="absolute inset-y-0 left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-landing-accent/25 via-white/[0.08] to-landing-accent/20" />
+      <motion.div
+        className="absolute top-1/2 w-[45%] -translate-y-1/2 rounded-full bg-gradient-to-r from-transparent via-[#00C878] to-transparent py-[1px] opacity-70 shadow-[0_0_8px_rgba(0,200,120,0.18)]"
+        initial={{ left: '-40%' }}
+        animate={{ left: ['-40%', '110%'] }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }}
+      />
     </div>
   );
 }
@@ -77,9 +72,10 @@ export function LandingHowItWorks() {
   return (
     <section
       id={LANDING_SECTIONS.howItWorks}
-      className="scroll-mt-24 bg-landing-bg px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32"
+      className="relative scroll-mt-24 overflow-hidden bg-landing-bg px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32"
     >
-      <div className="mx-auto max-w-6xl">
+      <LandingSectionBackdrop variant="howItWorks" />
+      <div className="relative z-[1] mx-auto max-w-6xl">
         <ScrollReveal>
           <h2 className="text-[1.65rem] font-semibold tracking-tight text-landing-text sm:text-[1.875rem] lg:text-[2.125rem]">
             From signal to execution
@@ -89,10 +85,10 @@ export function LandingHowItWorks() {
           </p>
         </ScrollReveal>
 
-        <div className="mt-16 flex flex-col gap-10 md:flex-row md:items-stretch md:gap-2 lg:gap-4">
+        <div className="mt-16 flex flex-col gap-10 md:flex-row md:items-stretch md:justify-center md:gap-0">
           {STEPS.map((s, i) => (
             <Fragment key={s.step}>
-              <ScrollReveal className="min-w-0 flex-1" delay={0.12 * i}>
+              <ScrollReveal className="min-w-0 flex-1 md:max-w-[min(100%,18rem)] lg:max-w-none" delay={0.1 * i}>
                 <motion.div
                   whileHover={{
                     y: -5,
@@ -104,10 +100,14 @@ export function LandingHowItWorks() {
                 >
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
                   <div className="mb-4 flex items-center gap-3">
-                    <span className="relative z-[1] flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.1] bg-landing-bg text-landing-accent shadow-[0_0_0_3px_#1E222A]">
+                    <motion.span
+                      className="relative z-[1] flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.1] bg-landing-bg text-landing-accent shadow-[0_0_0_3px_#1E222A]"
+                      whileHover={{ scale: 1.07, borderColor: 'rgba(0,200,120,0.35)' }}
+                      transition={{ type: 'tween', duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    >
                       {s.icon}
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-widest text-landing-muted opacity-90">
+                    </motion.span>
+                    <span className="font-mono text-xs font-semibold uppercase tracking-widest text-landing-muted opacity-90">
                       {s.step}
                     </span>
                   </div>
@@ -118,13 +118,15 @@ export function LandingHowItWorks() {
                   {i < STEPS.length - 1 ? (
                     <div className="mt-8 flex items-center gap-2 opacity-40 md:hidden" aria-hidden>
                       <div className="h-px flex-1 bg-gradient-to-r from-landing-accent/50 to-transparent" />
-                      <span className="text-[10px] uppercase tracking-wider text-landing-muted">Next</span>
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-landing-muted">
+                        {STEPS[i + 1]?.step}
+                      </span>
                       <div className="h-px flex-1 bg-gradient-to-l from-landing-accent/35 to-transparent" />
                     </div>
                   ) : null}
                 </motion.div>
               </ScrollReveal>
-              {i < STEPS.length - 1 ? <StepConnector /> : null}
+              {i < STEPS.length - 1 ? <FlowConnector /> : null}
             </Fragment>
           ))}
         </div>

@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
+import { LandingSectionPixelField } from '@/components/landing/effects/LandingSectionPixelField';
+import { LandingSectionBackdrop } from '@/components/landing/LandingSectionBackdrop';
 import { ScrollReveal } from '@/components/landing/ScrollReveal';
 
 const CARDS: { title: string; body: string; icon: ReactNode }[] = [
@@ -47,28 +49,43 @@ const CARDS: { title: string; body: string; icon: ReactNode }[] = [
 
 export function LandingTrust() {
   return (
-    <section className="bg-landing-mid px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32">
-      <div className="mx-auto max-w-6xl">
+    <section className="relative overflow-hidden bg-landing-mid px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32">
+      <LandingSectionBackdrop variant="trust" />
+      <LandingSectionPixelField count={48} />
+      <div className="relative z-[2] mx-auto max-w-6xl">
         <ScrollReveal>
           <h2 className="text-[1.65rem] font-semibold tracking-tight text-landing-text sm:text-[1.875rem] lg:text-[2.125rem]">
             Built for real traders
           </h2>
         </ScrollReveal>
 
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
+        <div className="mt-14 grid divide-y divide-white/[0.08] overflow-visible rounded-2xl border border-white/[0.08] bg-landing-card/40 md:grid-cols-3 md:divide-x md:divide-y-0">
           {CARDS.map((c, i) => (
-            <ScrollReveal key={c.title} delay={0.09 * i}>
+            <ScrollReveal
+              key={c.title}
+              delay={0.09 * i}
+              className="overflow-visible p-6 sm:p-8"
+            >
               <motion.div
-                whileHover={{
-                  y: -4,
-                  boxShadow:
-                    '0 16px 44px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.08), 0 0 32px -14px rgba(0, 200, 120, 0.08)',
-                }}
+                whileHover={{ y: -3 }}
                 transition={{ type: 'tween', duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                className="h-full rounded-2xl border border-white/[0.1] bg-landing-card/95 p-6 shadow-landing-card-strong"
+                className="h-full"
               >
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] bg-landing-bg text-landing-muted">
-                  {c.icon}
+                {/* Outer pad so any soft halo stays inside the cell (avoids rectangular clip artifacts). */}
+                <div className="mb-4 flex h-14 w-14 items-center justify-center overflow-visible">
+                  <motion.div
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] bg-landing-bg text-landing-muted"
+                    animate={{
+                      boxShadow: [
+                        'inset 0 0 0 0 rgba(0,200,120,0)',
+                        'inset 0 0 14px 2px rgba(0,200,120,0.2)',
+                        'inset 0 0 0 0 rgba(0,200,120,0)',
+                      ],
+                    }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
+                  >
+                    {c.icon}
+                  </motion.div>
                 </div>
                 <h3 className="text-base font-semibold text-landing-text">{c.title}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-landing-muted opacity-90">{c.body}</p>
@@ -77,7 +94,13 @@ export function LandingTrust() {
           ))}
         </div>
 
-        <ScrollReveal delay={0.18} className="mt-14 max-w-2xl">
+        <ScrollReveal delay={0.18} className="mt-10 text-center">
+          <p className="text-sm font-medium tracking-wide text-landing-muted opacity-80">
+            Designed for execution, not entertainment.
+          </p>
+        </ScrollReveal>
+
+        <ScrollReveal delay={0.22} className="mt-8 max-w-2xl text-center md:mx-auto">
           <p className="text-base leading-relaxed text-landing-muted opacity-[0.88]">
             Sigflo is built to help traders make clearer decisions — not to sell fantasy.
           </p>
