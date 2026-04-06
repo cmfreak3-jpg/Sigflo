@@ -146,7 +146,8 @@ export function computeExitGuidance(args: {
     confidenceLabel = tm > 0.5 ? 'High' : tm > 0.35 ? 'Medium' : 'Low';
   }
 
-  const headline = state === 'hold' ? 'HOLD' : state === 'trim' ? 'TRIM' : 'EXIT';
+  /** Hold is a neutral state — no shouty prefix in UI (strip / micro-row skip it). */
+  const headline = state === 'hold' ? '' : state === 'trim' ? 'TRIM' : 'EXIT';
 
   let action: string;
   if (state === 'exit') {

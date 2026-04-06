@@ -44,7 +44,7 @@ export function StatusChip({
   return (
     <span
       className={`inline-flex max-w-full items-center truncate rounded-full border border-white/[0.06] font-semibold tracking-wide ring-1 ${s.ring} ${s.bg} ${s.text} ${s.glow} ${
-        compact ? 'px-1 py-0 text-[7px] leading-none' : 'px-2 py-0.5 text-[10px]'
+        compact ? 'px-[5px] py-[1px] text-[8px] leading-none' : 'px-2 py-0.5 text-[10px]'
       }`}
     >
       {label}

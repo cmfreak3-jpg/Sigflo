@@ -29,6 +29,9 @@ function manageSizeSummary(ctx: ManageTradePositionContext): string {
 export type TradeControlsProps = {
   manageDataInvalid: boolean;
   ticketIntent: string | null;
+  /** Acknowledge close / size change — execution stays on the exchange. */
+  onClosePosition?: () => void;
+  onAddToPosition?: () => void;
   market: MarketMode;
   mergedModel: TradeViewModel;
   isManageMode: boolean;
@@ -55,6 +58,8 @@ export function TradeControls(props: TradeControlsProps) {
   const {
     manageDataInvalid,
     ticketIntent,
+    onClosePosition,
+    onAddToPosition,
     market,
     mergedModel,
     isManageMode,
@@ -78,21 +83,43 @@ export function TradeControls(props: TradeControlsProps) {
   } = props;
 
   return (
-    <div className="mx-auto max-w-lg space-y-1 px-4 pb-4 pt-0">
+    <div className="mx-auto flex w-full max-w-lg flex-col space-y-1 px-3 pb-4 pt-0">
       {manageDataInvalid ? (
         <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-center text-[11px] leading-snug text-amber-100/90">
           Position data unavailable — showing new trade layout.
         </p>
       ) : null}
       {ticketIntent === 'close' ? (
-        <p className="rounded-xl border border-rose-500/20 bg-rose-500/[0.07] px-3 py-2 text-center text-[11px] leading-snug text-rose-100/90">
-          Plan your exit on the chart — closing still happens on the exchange.
-        </p>
+        <div className="space-y-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.07] px-3 py-2.5">
+          <p className="text-center text-[11px] leading-snug text-rose-100/90">
+            Plan your exit on the chart — closing still happens on the exchange.
+          </p>
+          {onClosePosition ? (
+            <button
+              type="button"
+              onClick={onClosePosition}
+              className="w-full rounded-xl border border-rose-400/40 bg-rose-500/[0.18] py-3 text-sm font-bold text-rose-50 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition hover:bg-rose-500/25 active:scale-[0.99]"
+            >
+              Close position
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {ticketIntent === 'add' ? (
-        <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2 text-center text-[11px] leading-snug text-emerald-100/90">
-          Size up below to mirror how much more you want on this book.
-        </p>
+        <div className="space-y-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2.5">
+          <p className="text-center text-[11px] leading-snug text-emerald-100/90">
+            Size up below to mirror how much more you want on this book.
+          </p>
+          {onAddToPosition ? (
+            <button
+              type="button"
+              onClick={onAddToPosition}
+              className="w-full rounded-xl bg-sigflo-accent py-3 text-sm font-bold text-sigflo-bg shadow-glow transition hover:brightness-110 active:scale-[0.99]"
+            >
+              Add to position
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {isManageMode && managePnlDisplay && manageCtx ? (

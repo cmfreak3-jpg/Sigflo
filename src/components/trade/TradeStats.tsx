@@ -24,17 +24,17 @@ export function TradeStats({
     <>
       <span className="font-semibold text-emerald-200/90 tabular-nums">{fmtSignedPct(rewardPercent)}</span>
       <span className="text-sigflo-muted"> target</span>
-      <span className="mx-1 text-white/[0.12]">·</span>
+      <span className="mx-[5px] text-white/[0.12]">·</span>
       <span className="font-semibold text-rose-200/85 tabular-nums">{fmtSignedPct(-Math.abs(riskPercent))}</span>
       <span className="text-sigflo-muted"> risk</span>
-      <span className="mx-1 text-white/[0.12]">·</span>
+      <span className="mx-[5px] text-white/[0.12]">·</span>
       <span className="text-sigflo-text/90">
         R:R{' '}
         <span className="font-semibold tabular-nums text-cyan-200/90">{rrOk ? rrRatio.toFixed(1) : '—'}</span>
       </span>
     </>
   );
-  const sizeCls = compact ? 'text-[8px] leading-none tracking-tight' : 'text-[10px] leading-snug tracking-tight';
+  const sizeCls = compact ? 'text-[10px] leading-none tracking-tight' : 'text-[10px] leading-snug tracking-tight';
   if (variant === 'strip') {
     return (
       <p

@@ -327,11 +327,7 @@ export function OrderInputsCard(props: {
             />
             {((stopPctHint != null && Number.isFinite(stopPctHint)) ||
               (entryNum != null && onStopInputChange)) ? (
-              <div
-                className={`flex min-h-[1.25rem] flex-wrap items-center gap-x-2 gap-y-1 ${
-                  stopPctHint != null && Number.isFinite(stopPctHint) ? 'justify-between' : 'justify-end'
-                }`}
-              >
+              <div className="flex min-h-[1.25rem] w-full min-w-0 items-center gap-x-2 gap-y-1">
                 {stopPctHint != null && Number.isFinite(stopPctHint) ? (
                   <p
                     className={`shrink-0 text-[10px] font-semibold tabular-nums ${stopPctHint <= 0 ? 'text-rose-300' : 'text-sigflo-muted'}`}
@@ -341,28 +337,30 @@ export function OrderInputsCard(props: {
                   </p>
                 ) : null}
                 {entryNum != null && onStopInputChange ? (
-                  <div className="flex min-w-0 flex-wrap justify-end gap-1">
-                    {SL_TP_BPS_CHIPS.map((bps) => {
-                      const active = slEnabled && bpsChipActive(slBpsImplied, bps);
-                      return (
-                        <button
-                          key={`sl-bps-${bps}`}
-                          type="button"
-                          title={`Stop ${bpsToPctLabel(bps)} from entry`}
-                          onClick={() => {
-                            setSlEnabled(true);
-                            onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, bps)));
-                          }}
-                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
-                            active
-                              ? 'border-rose-400/55 bg-rose-500/15 text-rose-200 ring-1 ring-rose-400/20'
-                              : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-rose-400/30 hover:bg-rose-500/10 hover:text-rose-100'
-                          }`}
-                        >
-                          −{bps}
-                        </button>
-                      );
-                    })}
+                  <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
+                    <div className="flex w-max flex-nowrap gap-1 pr-1">
+                      {SL_TP_BPS_CHIPS.map((bps) => {
+                        const active = slEnabled && bpsChipActive(slBpsImplied, bps);
+                        return (
+                          <button
+                            key={`sl-bps-${bps}`}
+                            type="button"
+                            title={`Stop ${bpsToPctLabel(bps)} from entry`}
+                            onClick={() => {
+                              setSlEnabled(true);
+                              onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, bps)));
+                            }}
+                            className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
+                              active
+                                ? 'border-rose-400/55 bg-rose-500/15 text-rose-200 ring-1 ring-rose-400/20'
+                                : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-rose-400/30 hover:bg-rose-500/10 hover:text-rose-100'
+                            }`}
+                          >
+                            −{bps}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -399,7 +397,7 @@ export function OrderInputsCard(props: {
             />
             {((tpPctHint != null && Number.isFinite(tpPctHint)) ||
               (entryNum != null && onTakeProfitInputChange)) ? (
-              <div className="flex min-h-[1.25rem] w-full min-w-0 flex-nowrap items-center gap-x-2 gap-y-1 overflow-x-auto">
+              <div className="flex min-h-[1.25rem] w-full min-w-0 items-center gap-x-2 gap-y-1">
                 {tpPctHint != null && Number.isFinite(tpPctHint) ? (
                   <p
                     className={`shrink-0 text-[10px] font-semibold tabular-nums ${tpPctHint >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
@@ -409,28 +407,30 @@ export function OrderInputsCard(props: {
                   </p>
                 ) : null}
                 {entryNum != null && onTakeProfitInputChange ? (
-                  <div className="ml-auto flex shrink-0 flex-nowrap gap-1">
-                    {SL_TP_BPS_CHIPS.map((bps) => {
-                      const active = tpEnabled && bpsChipActive(tpBpsImplied, bps);
-                      return (
-                        <button
-                          key={`tp-bps-${bps}`}
-                          type="button"
-                          title={`Take profit ${bpsToPctLabel(bps)} from entry`}
-                          onClick={() => {
-                            setTpEnabled(true);
-                            onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, bps)));
-                          }}
-                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
-                            active
-                              ? 'border-emerald-400/55 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20'
-                              : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-emerald-400/30 hover:bg-emerald-500/10 hover:text-emerald-100'
-                          }`}
-                        >
-                          +{bps}
-                        </button>
-                      );
-                    })}
+                  <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
+                    <div className="flex w-max flex-nowrap gap-1 pr-1">
+                      {SL_TP_BPS_CHIPS.map((bps) => {
+                        const active = tpEnabled && bpsChipActive(tpBpsImplied, bps);
+                        return (
+                          <button
+                            key={`tp-bps-${bps}`}
+                            type="button"
+                            title={`Take profit ${bpsToPctLabel(bps)} from entry`}
+                            onClick={() => {
+                              setTpEnabled(true);
+                              onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, bps)));
+                            }}
+                            className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition ${
+                              active
+                                ? 'border-emerald-400/55 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20'
+                                : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-emerald-400/30 hover:bg-emerald-500/10 hover:text-emerald-100'
+                            }`}
+                          >
+                            +{bps}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : null}
               </div>

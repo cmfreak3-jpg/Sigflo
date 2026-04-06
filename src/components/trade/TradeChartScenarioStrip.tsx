@@ -403,7 +403,7 @@ function TradeStripTradeHero(
       >
         {eg ? (
           <ScenarioMetricCell
-            label="Exit"
+            label="State"
             density="compact"
             className="transition-all duration-300"
             style={
@@ -422,7 +422,7 @@ function TradeStripTradeHero(
                 textShadow: props.exitFlash ? `0 0 8px ${exitColor}66` : undefined,
               }}
             >
-              {eg.headline}
+              {eg.headline || '—'}
             </span>
           </ScenarioMetricCell>
         ) : null}
@@ -477,7 +477,7 @@ function TradeStripManageHero(
       >
         {eg ? (
           <ScenarioMetricCell
-            label="Exit"
+            label="State"
             density="compact"
             className="transition-all duration-300"
             style={
@@ -496,7 +496,7 @@ function TradeStripManageHero(
                 textShadow: props.exitFlash ? `0 0 8px ${exitColor}66` : undefined,
               }}
             >
-              {eg.headline}
+              {eg.headline || '—'}
             </span>
           </ScenarioMetricCell>
         ) : null}
@@ -531,7 +531,10 @@ function ExitAutomationMicroSummary(props: {
   const confColor = exitConfidenceColor(props.guidance.confidenceLabel);
   const stateColor = exitStateColor(props.guidance.state);
   const modeLabel = EXIT_AI_MODE_LABEL[props.exitAiMode];
-  const ariaSummary = `Exit AI ${modeLabel}, strategy ${strat}. ${props.guidance.headline}. Next: ${props.nextPlanned}. Confidence ${props.guidance.confidenceLabel}.`;
+  const showHeadlinePrefix = props.guidance.state !== 'trim' && props.guidance.headline.length > 0;
+  const ariaSummary = `Exit automation: ${modeLabel}, strategy ${strat}. ${
+    showHeadlinePrefix ? `${props.guidance.headline}. ` : ''
+  }Next: ${props.nextPlanned}. Confidence ${props.guidance.confidenceLabel}.`;
 
   return (
     <div
@@ -540,17 +543,21 @@ function ExitAutomationMicroSummary(props: {
       className="rounded border border-white/[0.06] bg-white/[0.02] px-1 py-[3px] sm:py-0.5"
     >
       <p className="truncate text-[6px] font-medium leading-none text-sigflo-muted sm:text-[7px]">
-        <span className="font-semibold uppercase tracking-[0.12em]">Exit AI</span>{' '}
+        <span className="font-semibold uppercase tracking-[0.12em]">Mode</span>{' '}
         <span className="normal-case tracking-tight text-sigflo-text/95">{modeLabel}</span>
         <span className="mx-0.5 text-white/18">·</span>
         <span className="font-semibold uppercase tracking-[0.12em]">Strat</span>{' '}
         <span className="normal-case tracking-tight text-sigflo-text/88">{strat}</span>
       </p>
       <p className="mt-0.5 truncate text-[9px] leading-snug text-sigflo-muted sm:text-[10px]">
-        <span className="font-bold uppercase tracking-[0.08em]" style={{ color: stateColor }}>
-          {props.guidance.headline}
-        </span>
-        <span className="mx-0.5 text-white/15">·</span>
+        {showHeadlinePrefix ? (
+          <>
+            <span className="font-bold uppercase tracking-[0.08em]" style={{ color: stateColor }}>
+              {props.guidance.headline}
+            </span>
+            <span className="mx-0.5 text-white/15">·</span>
+          </>
+        ) : null}
         <span className="font-medium normal-case tracking-tight text-sigflo-text/88">{props.nextPlanned}</span>
         <span className="mx-0.5 text-white/15">·</span>
         <span className="font-semibold uppercase tracking-[0.1em]" style={{ color: confColor }}>

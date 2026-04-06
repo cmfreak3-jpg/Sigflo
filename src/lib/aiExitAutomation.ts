@@ -78,7 +78,7 @@ export function applySafeguardsToGuidance(
     return {
       ...g,
       state: 'hold',
-      headline: 'HOLD',
+      headline: '',
       confidenceLabel: 'Medium',
       reason: 'Below your minimum profit threshold for automated trims.',
       action: `Let it work toward $${formatQuoteNumber(target)}`,
@@ -125,7 +125,7 @@ export function nextPlannedAutomationLine(args: {
   if (g.state === 'exit') {
     return `Will close fully near $${formatQuoteNumber(g.referencePrice)}`;
   }
-  return 'Holding — automation watching trend and risk.';
+  return 'Automation watching trend and risk.';
 }
 
 export function parseActivityLogJson(raw: string | null): ExitAutomationActivityEntry[] {

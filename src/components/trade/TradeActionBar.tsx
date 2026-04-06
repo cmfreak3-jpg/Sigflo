@@ -1,3 +1,4 @@
+import { setupBandDockEmphasisClass } from '@/lib/setupBandUi';
 import type { TradeTimingChipState } from '@/lib/tradeTimingChip';
 import { StatusChip } from '@/components/trade/StatusChip';
 import type { MarketMode } from '@/types/trade';
@@ -48,7 +49,7 @@ export function ChartInlineTradeButtons({
   const disabledHint = !canExecute ? 'Set a position size and ensure balance is available' : undefined;
   const btnBase =
     variant === 'dock'
-      ? 'inline-flex h-[26px] min-w-[2.85rem] items-center justify-center px-2 py-0 text-[10px] font-bold leading-none rounded-md sm:h-[28px] sm:min-w-[3.1rem] sm:px-2.5 sm:text-[11px]'
+      ? 'inline-flex h-[31px] min-w-[3.42rem] items-center justify-center rounded-[7px] px-[10px] py-0 text-[12px] font-bold leading-none sm:h-[34px] sm:min-w-[3.72rem] sm:px-[11px] sm:text-[13px]'
       : 'px-2 py-1 text-[10px] rounded-md';
 
   const shortDim =
@@ -57,20 +58,20 @@ export function ChartInlineTradeButtons({
     variant === 'dock' && signalBias === 'short' ? 'opacity-[0.72] brightness-[0.92] saturate-[0.92]' : '';
   const shortGlow =
     variant === 'dock' && signalBias === 'short'
-      ? 'shadow-[0_0_18px_-3px_rgba(248,113,113,0.55)] ring-1 ring-rose-200/45'
+      ? 'shadow-[0_0_22px_-4px_rgba(248,113,113,0.55)] ring-1 ring-rose-200/45'
       : flashSide === 'short'
         ? 'ring-1 ring-red-200/80'
         : 'ring-1 ring-rose-400/25';
   const longGlow =
     variant === 'dock' && signalBias === 'long'
-      ? 'shadow-[0_0_18px_-3px_rgba(52,211,153,0.5)] ring-1 ring-emerald-200/50'
+      ? 'shadow-[0_0_22px_-4px_rgba(52,211,153,0.5)] ring-1 ring-emerald-200/50'
       : flashSide === 'long'
         ? 'ring-1 ring-emerald-200/80'
         : 'ring-1 ring-emerald-400/25';
 
   const buttons = (
     <div
-      className={`flex shrink-0 items-center ${variant === 'dock' ? 'gap-1' : 'gap-px sm:gap-0.5'}`}
+      className={`flex shrink-0 items-center ${variant === 'dock' ? 'gap-[5px]' : 'gap-px sm:gap-0.5'}`}
       role="group"
       aria-label="Open trade"
     >
@@ -79,7 +80,7 @@ export function ChartInlineTradeButtons({
         disabled={!canExecute}
         title={disabledHint}
         onClick={onOpenShort}
-        className={`bg-gradient-to-b from-rose-500/95 to-rose-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_12px_-4px_rgba(239,68,68,0.45)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${shortDim} ${shortGlow}`}
+        className={`bg-gradient-to-b from-rose-500/95 to-rose-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_14px_-5px_rgba(239,68,68,0.45)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${shortDim} ${shortGlow}`}
       >
         {shortLabel}
       </button>
@@ -88,7 +89,7 @@ export function ChartInlineTradeButtons({
         disabled={!canExecute}
         title={disabledHint}
         onClick={onOpenLong}
-        className={`bg-gradient-to-b from-emerald-500/95 to-emerald-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_12px_-4px_rgba(34,197,94,0.4)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${longDim} ${longGlow}`}
+        className={`bg-gradient-to-b from-emerald-500/95 to-emerald-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_14px_-5px_rgba(34,197,94,0.4)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${longDim} ${longGlow}`}
       >
         {longLabel}
       </button>
@@ -96,20 +97,36 @@ export function ChartInlineTradeButtons({
   );
 
   if (variant === 'dock' && dockMeta) {
+    const dockTealGlow =
+      'font-semibold text-cyan-200/95 [text-shadow:0_0_6px_rgba(0,255,200,0.55),0_0_14px_rgba(0,255,200,0.3)]';
     return (
-      <div className="flex max-w-[min(100%,20rem)] flex-wrap items-center justify-center gap-x-1.5 gap-y-0">
-        {buttons}
-        <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-x-1 gap-y-0">
-          <span className="text-[7px] font-medium tabular-nums text-sigflo-muted/90 sm:text-[8px]">
-            Conf. <span className="font-semibold text-white/88">{dockMeta.confidenceLabel}</span>
-            <span className="mx-0.5 text-white/12" aria-hidden>
-              ·
+      <div className="flex max-w-[min(100%,24rem)] flex-wrap items-center justify-center gap-x-[6px] gap-y-1">
+        <div className="-translate-x-1 sm:-translate-x-1.5">{buttons}</div>
+        <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <div
+            className="grid grid-cols-2 grid-rows-2 overflow-hidden rounded-md border border-white/[0.14] text-[8px] font-medium tabular-nums text-sigflo-muted/90 sm:text-[10px]"
+            title={`Trade score ${dockMeta.confidenceLabel} (readiness). Setup tier ${dockMeta.setupQualityLabel} (signal structure).`}
+          >
+            <span className="flex min-h-[1.4rem] items-center justify-center border-r border-b border-white/[0.1] px-1 py-0.5 leading-none text-sigflo-muted/90">
+              Trade
             </span>
-            <span className="max-w-[6.5rem] truncate sm:max-w-[8rem]" title={dockMeta.setupQualityLabel}>
-              Setup <span className="font-semibold text-white/82">{dockMeta.setupQualityLabel}</span>
+            <span className="flex min-h-[1.4rem] items-center justify-center border-b border-white/[0.1] px-1 py-0.5 leading-none text-sigflo-muted/90">
+              Setup
             </span>
-          </span>
-          <StatusChip label={dockMeta.timing.label} state={dockMeta.timing.state} compact />
+            <span
+              className={`flex min-h-[1.4rem] min-w-0 items-center justify-center border-r border-white/[0.1] px-1 py-0.5 text-center leading-none tabular-nums ${setupBandDockEmphasisClass(dockMeta.setupQualityLabel)}`}
+            >
+              <span className="min-w-0 truncate">
+                {dockMeta.setupQualityLabel === 'Developing' ? 'Building' : dockMeta.setupQualityLabel}
+              </span>
+            </span>
+            <span className={`flex min-h-[1.4rem] items-center justify-center px-1 py-0.5 leading-none tabular-nums ${dockTealGlow}`}>
+              {dockMeta.confidenceLabel}
+            </span>
+          </div>
+          {dockMeta.timing.state !== 'developing' ? (
+            <StatusChip label={dockMeta.timing.label} state={dockMeta.timing.state} compact />
+          ) : null}
         </div>
       </div>
     );

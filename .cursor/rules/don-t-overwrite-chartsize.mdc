@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+rade chart plot heights: single source of truth is src/config/tradeChartHeights.ts (TRADE_CHART_PLOT_EXPANDED_PX, TRADE_CHART_PLOT_COLLAPSED_PX). Do not hardcode chart heights in ChartHeader, TradeScreen, or PriceChartCard.

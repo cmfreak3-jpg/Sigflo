@@ -8,6 +8,7 @@ import {
   HistogramSeries,
   LineSeries,
   TickMarkType,
+  type AutoscaleInfo,
   type IChartApi,
   type ISeriesApi,
   type Time,
@@ -20,6 +21,12 @@ import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { hexToRgba } from '@/lib/chartColorUtils';
 import { tradeTimingOverlayVisual, type TradeTimingChipState } from '@/lib/tradeTimingChip';
 import { formatQuoteNumber, formatQuoteUsd } from '@/lib/formatQuote';
+import {
+  TRADE_CHART_LEVEL_COLORS,
+  buildChartOverlayPresetLive,
+  chartOverlayPresetSetupLevels,
+  type TradeChartAuxLine,
+} from '@/lib/tradeChartLevels';
 import type { MarketMode, TradeViewModel } from '@/types/trade';
 
 /**
@@ -28,15 +35,16 @@ import type { MarketMode, TradeViewModel } from '@/types/trade';
  */
 type LevelKey = 'last' | 'entry' | 'stop' | 'target' | 'liquidation';
 
-const levelStyles: Record<
-  LevelKey,
-  { label: string; stroke: string; labelClass: string }
-> = {
-  last: { label: 'Last', stroke: '#22d3ee', labelClass: 'text-cyan-300' },
-  entry: { label: 'Entry', stroke: '#34d399', labelClass: 'text-emerald-300' },
-  stop: { label: 'Stop', stroke: '#f87171', labelClass: 'text-rose-300' },
-  target: { label: 'Target', stroke: '#a7f3d0', labelClass: 'text-emerald-200' },
-  liquidation: { label: 'Liq.', stroke: '#fbbf24', labelClass: 'text-amber-200' },
+const levelStyles: Record<LevelKey, { label: string; stroke: string; labelClass: string }> = {
+  last: { label: 'Last', stroke: TRADE_CHART_LEVEL_COLORS.last, labelClass: 'text-cyan-300' },
+  entry: { label: 'Entry', stroke: TRADE_CHART_LEVEL_COLORS.entry, labelClass: 'text-teal-300' },
+  stop: { label: 'Stop', stroke: TRADE_CHART_LEVEL_COLORS.stop, labelClass: 'text-rose-300' },
+  target: { label: 'Target', stroke: TRADE_CHART_LEVEL_COLORS.target, labelClass: 'text-emerald-300' },
+  liquidation: {
+    label: 'Liq.',
+    stroke: TRADE_CHART_LEVEL_COLORS.liquidation,
+    labelClass: 'text-amber-200',
+  },
 };
 
 /** Ease-out fade for setup overlays (entry / stop / target / liq). */
@@ -109,7 +117,29 @@ export function PriceChartCard({
   metaCaption,
   setupMode,
   onSetupModeToggle,
+  onRequestSetupMode,
   tradeTimingState,
+  /** When true, chart chrome emphasizes active position context (header metrics, optional proximity). */
+  liveTradeMode = false,
+  /** Extra horizontal levels (e.g. trim) — not toggled via overlay chips. */
+  auxiliaryPriceLines,
+  /** Compact R / T / R:R (+ optional badge) under the exchange hero row. */
+  liveHeaderMetrics,
+  /** When this key changes, refit time scale once so entry/stop/target stay in view. */
+  liveTradeRefitKey,
+  /** Subtle frame hint when price is near stop or target. */
+  chartProximity = null,
+  /**
+   * When true (open position), apply the Live Trade overlay preset once and auto-enable liq when it becomes
+   * available unless the user toggled it. Resets to setup (all off) when false. Manual chip toggles while
+   * live are tracked per-level until the position closes.
+   */
+  liveTradeOverlayPreset = false,
+  /**
+   * When true, hide last price + 24h change in the exchange hero row (e.g. when a `LiveMarketStrip` above
+   * already shows them). Left column becomes “Price chart” + `liveHeaderMetrics` instead.
+   */
+  suppressExchangeHeroLivePrice = false,
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -132,8 +162,24 @@ export function PriceChartCard({
   /** When set, parent controls trade overlays: false = hidden, true = entry/stop/target (+ liq on perps). */
   setupMode?: boolean;
   onSetupModeToggle?: () => void;
+  /** Prefer this from overlay chips (Clean → show one level): forces Setup on without toggling off if state drifts. */
+  onRequestSetupMode?: () => void;
   /** When Setup overlays are on, scales line alpha / entry emphasis from timing chip state. */
   tradeTimingState?: TradeTimingChipState;
+  liveTradeMode?: boolean;
+  auxiliaryPriceLines?: TradeChartAuxLine[];
+  liveHeaderMetrics?: {
+    riskPercent: number;
+    rewardPercent: number;
+    rrRatio: number;
+    badge?: string;
+    /** Shown under R/T/R:R when `suppressExchangeHeroLivePrice` (e.g. uPnL — not duplicate last). */
+    secondaryLine?: string;
+  };
+  liveTradeRefitKey?: string;
+  chartProximity?: 'stop' | 'target' | null;
+  liveTradeOverlayPreset?: boolean;
+  suppressExchangeHeroLivePrice?: boolean;
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
@@ -142,6 +188,11 @@ export function PriceChartCard({
     Boolean(exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange);
   const showLiquidation = market === 'futures';
   const setupControlled = typeof setupMode === 'boolean';
+  /** Latest setup flag for async fade-out (avoid clearing overlays after user re-enters Setup). */
+  const setupModeLiveRef = useRef(setupMode === true);
+  useEffect(() => {
+    setupModeLiveRef.current = setupMode === true;
+  }, [setupMode]);
   const prevSetupOnRef = useRef<boolean | undefined>(undefined);
   /** One-shot: animate setup lines in only when entering Setup mode (not when toggling individual levels). */
   const setupFadeInArmRef = useRef(false);
@@ -155,7 +206,11 @@ export function PriceChartCard({
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const lineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const priceLineByKeyRef = useRef<Partial<Record<LevelKey, ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>>>>({});
+  type PriceLineHandle = ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>;
+  const priceLineByKeyRef = useRef<Partial<Record<LevelKey, PriceLineHandle>>>({});
+  const auxPriceLineByIdRef = useRef<Record<string, PriceLineHandle>>({});
+  /** Which series owns `priceLineByKeyRef` — must match candle vs line fallback in data effect. */
+  const priceLineHostModeRef = useRef<'candle' | 'line' | null>(null);
   const [visibleLevels, setVisibleLevels] = useState<Record<LevelKey, boolean>>({
     last: false,
     entry: false,
@@ -168,6 +223,8 @@ export function PriceChartCard({
   /** Tracks market futures/spot for liq sync (avoid forcing liq on every Setup toggle). */
   const prevShowLiqForSyncRef = useRef(showLiquidation);
   const prevSetupModeForSoloRef = useRef(setupMode);
+  const prevLiveOverlayPresetRef = useRef<boolean | undefined>(undefined);
+  const liveOverlayTouchedKeysRef = useRef<Set<LevelKey>>(new Set());
 
   useEffect(() => {
     if (setupControlled && prevSetupModeForSoloRef.current === true && setupMode === false) {
@@ -201,6 +258,13 @@ export function PriceChartCard({
       return;
     }
 
+    if (liveTradeOverlayPreset) {
+      liveOverlayTouchedKeysRef.current.clear();
+      setVisibleLevels(buildChartOverlayPresetLive(showLiquidation, model.liquidation));
+      prevShowLiqForSyncRef.current = showLiquidation;
+      return;
+    }
+
     setVisibleLevels({
       last: true,
       entry: true,
@@ -209,9 +273,43 @@ export function PriceChartCard({
       liquidation: showLiquidation,
     });
     prevShowLiqForSyncRef.current = showLiquidation;
-  }, [setupMode, setupControlled, showLiquidation, soloOverlayFromClean]);
+  }, [setupMode, setupControlled, showLiquidation, soloOverlayFromClean, liveTradeOverlayPreset, model.liquidation]);
 
-  /** Futures ↔ spot: update liq overlay only when `showLiquidation` actually changes in Setup. */
+  /** Enter / exit live trade: preset overlay toggles; reset touches when the preset boundary changes. */
+  useEffect(() => {
+    if (!setupControlled) return;
+    const prev = prevLiveOverlayPresetRef.current;
+    const next = liveTradeOverlayPreset;
+    prevLiveOverlayPresetRef.current = next;
+
+    if (next && prev !== true) {
+      liveOverlayTouchedKeysRef.current.clear();
+      setVisibleLevels(buildChartOverlayPresetLive(showLiquidation, model.liquidation));
+      setupFadeInArmRef.current = true;
+      prevSetupOnRef.current = true;
+      return;
+    }
+    if (!next && prev === true) {
+      liveOverlayTouchedKeysRef.current.clear();
+      setVisibleLevels(chartOverlayPresetSetupLevels());
+      return;
+    }
+  }, [liveTradeOverlayPreset, setupControlled, showLiquidation, model.liquidation]);
+
+  /** While live: turn liq on when a valid price appears, unless the user already toggled liq. */
+  useEffect(() => {
+    if (!setupControlled || !setupMode || !liveTradeOverlayPreset) return;
+    if (liveOverlayTouchedKeysRef.current.has('liquidation')) return;
+    const liqOn =
+      showLiquidation &&
+      model.liquidation != null &&
+      Number.isFinite(model.liquidation) &&
+      model.liquidation > 0;
+    if (!liqOn) return;
+    setVisibleLevels((prev) => (prev.liquidation ? prev : { ...prev, liquidation: true }));
+  }, [liveTradeOverlayPreset, model.liquidation, setupControlled, setupMode, showLiquidation]);
+
+  /** Futures ↔ spot: sync liq row visibility unless user overrode liq during live trade. */
   useEffect(() => {
     if (!setupControlled || !setupMode) {
       prevShowLiqForSyncRef.current = showLiquidation;
@@ -219,8 +317,11 @@ export function PriceChartCard({
     }
     if (prevShowLiqForSyncRef.current === showLiquidation) return;
     prevShowLiqForSyncRef.current = showLiquidation;
+    if (liveTradeOverlayPreset && liveOverlayTouchedKeysRef.current.has('liquidation')) {
+      return;
+    }
     setVisibleLevels((prev) => ({ ...prev, liquidation: showLiquidation }));
-  }, [showLiquidation, setupMode, setupControlled]);
+  }, [showLiquidation, setupMode, setupControlled, liveTradeOverlayPreset]);
 
   const visibleLevelKeys = useMemo(
     () =>
@@ -264,6 +365,43 @@ export function PriceChartCard({
       }) as const,
     [model.entry, model.liquidation, model.stop, model.target],
   );
+
+  /**
+   * v5 autoscale only uses bar min/max — custom price lines do not widen the scale. Stop/liq often sit
+   * outside the tight mock line path (~±1.5% around last), so they render off-screen without this.
+   */
+  const overlayPriceAutoscaleExtent = useMemo(() => {
+    const prices: number[] = [];
+    if (visibleLevels.last && Number.isFinite(model.lastPrice) && model.lastPrice > 0) {
+      prices.push(model.lastPrice);
+    }
+    if (visibleLevels.entry && Number.isFinite(staticLevelPrices.entry) && staticLevelPrices.entry > 0) {
+      prices.push(staticLevelPrices.entry);
+    }
+    if (visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0) {
+      prices.push(staticLevelPrices.stop);
+    }
+    if (visibleLevels.target && Number.isFinite(staticLevelPrices.target) && staticLevelPrices.target > 0) {
+      prices.push(staticLevelPrices.target);
+    }
+    if (
+      showLiquidation &&
+      visibleLevels.liquidation &&
+      Number.isFinite(staticLevelPrices.liquidation) &&
+      staticLevelPrices.liquidation > 0
+    ) {
+      prices.push(staticLevelPrices.liquidation);
+    }
+    for (const aux of auxiliaryPriceLines ?? []) {
+      if (Number.isFinite(aux.price) && aux.price > 0) prices.push(aux.price);
+    }
+    if (prices.length === 0) return null;
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const span = max - min;
+    const pad = span > 0 ? span * 0.03 : Math.max(min, max) * 0.002;
+    return { min: min - pad, max: max + pad };
+  }, [visibleLevels, staticLevelPrices, model.lastPrice, showLiquidation, auxiliaryPriceLines]);
 
   useLayoutEffect(() => {
     const el = chartContainerRef.current;
@@ -354,6 +492,8 @@ export function PriceChartCard({
 
     return () => {
       priceLineByKeyRef.current = {};
+      auxPriceLineByIdRef.current = {};
+      priceLineHostModeRef.current = null;
       chartViewKeyRef.current = '';
       didFitContentRef.current = false;
       candleStructRef.current = null;
@@ -373,6 +513,40 @@ export function PriceChartCard({
     const h = Math.max(1, Math.floor(el.clientHeight));
     c.resize(w, h);
   }, [chartPlotHeightPx]);
+
+  /** Widen right scale so setup price lines (stop / liq far from last) stay in view. */
+  useEffect(() => {
+    const candle = candleRef.current;
+    const line = lineRef.current;
+    const chart = chartRef.current;
+    if (!candle || !line || !chart) return;
+
+    const extent = overlayPriceAutoscaleExtent;
+    const autoscaleInfoProvider = (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
+      const base = original();
+      if (!extent) return base;
+      const { min: extMin, max: extMax } = extent;
+      if (base?.priceRange) {
+        return {
+          priceRange: {
+            minValue: Math.min(base.priceRange.minValue, extMin),
+            maxValue: Math.max(base.priceRange.maxValue, extMax),
+          },
+          margins: base.margins,
+        };
+      }
+      return {
+        priceRange: {
+          minValue: extMin,
+          maxValue: extMax,
+        },
+        margins: base?.margins,
+      };
+    };
+
+    candle.applyOptions({ autoscaleInfoProvider });
+    line.applyOptions({ autoscaleInfoProvider });
+  }, [overlayPriceAutoscaleExtent]);
 
   useEffect(() => {
     const candleSeries = candleRef.current;
@@ -478,13 +652,33 @@ export function PriceChartCard({
 
   useEffect(() => {
     const candleSeries = candleRef.current;
-    if (!candleSeries) return;
+    const lineSeries = lineRef.current;
+    if (!candleSeries || !lineSeries) return;
+
+    const candlesActive = (model.chartCandles?.length ?? 0) > 10;
+    const host = candlesActive ? candleSeries : lineSeries;
+    const nextHostMode: 'candle' | 'line' = candlesActive ? 'candle' : 'line';
+    const prevMode = priceLineHostModeRef.current;
+    if (prevMode != null && prevMode !== nextHostMode) {
+      const oldHost = prevMode === 'candle' ? candleSeries : lineSeries;
+      for (const key of Object.keys(priceLineByKeyRef.current) as LevelKey[]) {
+        const pl = priceLineByKeyRef.current[key];
+        if (pl) oldHost.removePriceLine(pl);
+        delete priceLineByKeyRef.current[key];
+      }
+      for (const id of Object.keys(auxPriceLineByIdRef.current)) {
+        const pl = auxPriceLineByIdRef.current[id];
+        if (pl) oldHost.removePriceLine(pl);
+        delete auxPriceLineByIdRef.current[id];
+      }
+    }
+    priceLineHostModeRef.current = nextHostMode;
 
     const want = new Set(visibleLevelKeys);
     for (const key of Object.keys(priceLineByKeyRef.current) as LevelKey[]) {
       if (!want.has(key)) {
         const line = priceLineByKeyRef.current[key];
-        if (line) candleSeries.removePriceLine(line);
+        if (line) host.removePriceLine(line);
         delete priceLineByKeyRef.current[key];
       }
     }
@@ -492,7 +686,11 @@ export function PriceChartCard({
     const strokeFor = (key: LevelKey) => {
       const style = levelStyles[key];
       if (useTimedSetupOverlays) {
-        return hexToRgba(style.stroke, setupOverlayVisual.alphaScale);
+        let a = setupOverlayVisual.alphaScale;
+        if (key === 'stop' || key === 'liquidation') {
+          a = Math.max(0.42, a);
+        }
+        return hexToRgba(style.stroke, a);
       }
       return style.stroke;
     };
@@ -506,7 +704,7 @@ export function PriceChartCard({
       if (key === 'last') {
         if (!priceLineByKeyRef.current.last) {
           const style = levelStyles.last;
-          priceLineByKeyRef.current.last = candleSeries.createPriceLine({
+          priceLineByKeyRef.current.last = host.createPriceLine({
             price: model.lastPrice,
             color: style.stroke,
             lineWidth: 1,
@@ -518,6 +716,14 @@ export function PriceChartCard({
       }
       const style = levelStyles[key];
       const price = staticLevelPrices[key];
+      if (!Number.isFinite(price) || price <= 0) {
+        const ghost = priceLineByKeyRef.current[key];
+        if (ghost) {
+          host.removePriceLine(ghost);
+          delete priceLineByKeyRef.current[key];
+        }
+        continue;
+      }
       const existing = priceLineByKeyRef.current[key];
       if (existing) {
         existing.applyOptions({
@@ -527,7 +733,7 @@ export function PriceChartCard({
           title: style.label,
         });
       } else {
-        priceLineByKeyRef.current[key] = candleSeries.createPriceLine({
+        priceLineByKeyRef.current[key] = host.createPriceLine({
           price,
           color: strokeFor(key),
           lineWidth: widthFor(key),
@@ -536,7 +742,61 @@ export function PriceChartCard({
         });
       }
     }
-  }, [staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
+  }, [model.chartCandles, model.lastPrice, staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
+
+  useEffect(() => {
+    const candleSeries = candleRef.current;
+    const lineSeries = lineRef.current;
+    if (!candleSeries || !lineSeries) return;
+
+    const candlesActive = (model.chartCandles?.length ?? 0) > 10;
+    const host = candlesActive ? candleSeries : lineSeries;
+
+    const want = new Map((auxiliaryPriceLines ?? []).filter((a) => Number.isFinite(a.price) && a.price > 0).map((a) => [a.id, a]));
+    for (const id of Object.keys(auxPriceLineByIdRef.current)) {
+      if (!want.has(id)) {
+        const pl = auxPriceLineByIdRef.current[id];
+        if (pl) host.removePriceLine(pl);
+        delete auxPriceLineByIdRef.current[id];
+      }
+    }
+    for (const aux of want.values()) {
+      const existing = auxPriceLineByIdRef.current[aux.id];
+      if (existing) {
+        existing.applyOptions({
+          price: aux.price,
+          color: aux.color,
+          title: aux.title,
+        });
+      } else {
+        auxPriceLineByIdRef.current[aux.id] = host.createPriceLine({
+          price: aux.price,
+          color: aux.color,
+          lineWidth: 1,
+          axisLabelVisible: true,
+          title: aux.title,
+        });
+      }
+    }
+  }, [auxiliaryPriceLines, model.chartCandles, model.lastPrice]);
+
+  const liveRefitSeenKeyRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!liveTradeRefitKey) {
+      liveRefitSeenKeyRef.current = undefined;
+      return;
+    }
+    if (liveRefitSeenKeyRef.current === liveTradeRefitKey) return;
+    liveRefitSeenKeyRef.current = liveTradeRefitKey;
+    didFitContentRef.current = false;
+    const ts = chartRef.current?.timeScale();
+    const id = window.requestAnimationFrame(() => {
+      ts?.fitContent();
+      didFitContentRef.current = true;
+      chartRef.current?.timeScale().scrollToRealTime();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [liveTradeRefitKey]);
 
   useEffect(() => {
     if (!setupControlled || setupMode) return;
@@ -574,7 +834,7 @@ export function PriceChartCard({
       }
       if (p < 1) {
         raf = requestAnimationFrame(step);
-      } else {
+      } else if (!setupModeLiveRef.current) {
         setVisibleLevels((prev) => ({
           ...prev,
           last: false,
@@ -689,13 +949,13 @@ export function PriceChartCard({
   const perpTimeCluster = (
     <span className="inline-flex shrink-0 flex-col items-end gap-0 leading-none">
       {marketTag ? (
-        <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted/90 md:text-[9px]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted/90 md:text-[11px]">
           {marketTag}
         </span>
       ) : null}
       {liveTime ? (
-        <span className="mt-0.5 inline-flex items-center gap-0.5 text-[8px] font-medium text-emerald-200/90 md:text-[9px]">
-          <span className="h-1 w-1 shrink-0 animate-pulse rounded-full bg-emerald-300" />
+        <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-200/90 md:text-[11px]">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300" />
           <span className="tabular-nums leading-tight">{liveTime}</span>
         </span>
       ) : null}
@@ -713,53 +973,111 @@ export function PriceChartCard({
   /** Clean mode: overlay chips still click — first tap turns on Setup so levels can render. */
   const setupGated = setupControlled && !setupMode;
 
+  const chartFrameToneClass =
+    chartProximity === 'stop'
+      ? 'shadow-[inset_0_0_20px_-8px_rgba(248,113,113,0.35)]'
+      : chartProximity === 'target'
+        ? 'shadow-[inset_0_0_20px_-8px_rgba(74,222,128,0.22)]'
+        : '';
+
   return (
     <Card
-      className="overflow-hidden border-white/[0.1] bg-gradient-to-b from-white/[0.06] via-sigflo-surface to-black/35 p-1.5 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] backdrop-blur-md md:p-2"
+      className={`overflow-hidden border-white/[0.1] bg-gradient-to-b from-white/[0.06] via-sigflo-surface to-black/35 p-1.5 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] backdrop-blur-md md:p-2 ${
+        liveTradeMode ? 'ring-1 ring-[#00ffc8]/14 shadow-[0_0_48px_-28px_rgba(0,255,200,0.12)]' : ''
+      }`}
       style={{ ['--chart-h-desktop' as string]: `${chartHeightPx}px` }}
     >
       {exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
-        <div className="mb-0 flex min-w-0 w-full flex-wrap items-end justify-between gap-x-2 gap-y-1 border-b border-white/[0.06] bg-black/20 px-[4.5px] pb-[3px] pt-px md:gap-x-2.5 md:px-[5.5px] md:pb-[3.5px] md:pt-[2px]">
-          <div className="flex min-w-0 shrink-0 items-baseline gap-2 md:gap-[4.5px]">
-            <span
-              className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
-                priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
-              }`}
-            >
-              {formatQuoteUsd(model.lastPrice)}
-            </span>
-            <span className={`text-[7px] font-medium tabular-nums leading-tight md:text-[8px] ${changeClass}`}>
-              {change >= 0 ? '+' : '−'}
-              {abs24hFmt} ({change >= 0 ? '+' : ''}
-              {change.toFixed(2)}%)
-            </span>
-          </div>
-          <div className="flex min-w-0 shrink-0 items-end justify-end gap-[3.5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-[4.5px]">
-            <div className="flex w-max shrink-0 items-end gap-[3.5px] md:gap-[4.5px]">
-              {timeframeOptions.map((intv) => (
-                <button
-                  key={intv.value}
-                  type="button"
-                  onClick={() => onChartIntervalChange(intv.value)}
-                  className={`shrink-0 rounded-sm px-[4px] py-[2px] text-[6px] font-medium uppercase leading-none tracking-wide transition md:px-[5px] md:py-[2.5px] md:text-[7px] ${
-                    chartInterval === intv.value
-                      ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/25'
-                      : 'bg-white/[0.04] text-sigflo-muted hover:bg-white/[0.07] hover:text-sigflo-text'
-                  }`}
-                >
-                  {intv.label}
-                </button>
-              ))}
+        <>
+          <div
+            className={`mb-0 flex min-w-0 w-full flex-wrap items-end justify-between gap-x-2 gap-y-1 border-b bg-black/20 px-[4.5px] pb-[3px] pt-px md:gap-x-2.5 md:px-[5.5px] md:pb-[3.5px] md:pt-[2px] ${
+              suppressExchangeHeroLivePrice && liveTradeMode
+                ? 'border-[#00ffc8]/12'
+                : 'border-white/[0.06]'
+            }`}
+          >
+            <div className="flex min-w-0 shrink-0 flex-col justify-end gap-0.5">
+              {suppressExchangeHeroLivePrice ? (
+                <>
+                  <span className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-sigflo-muted/90 md:text-[10px]">
+                    Price chart
+                  </span>
+                  {liveHeaderMetrics?.secondaryLine ? (
+                    <p className="max-w-[min(100%,16rem)] truncate text-[7px] font-semibold tabular-nums text-cyan-200/80 md:text-[8px]">
+                      {liveHeaderMetrics.secondaryLine}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="flex min-w-0 items-baseline gap-2 md:gap-[4.5px]">
+                  <span
+                    className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
+                      priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
+                    }`}
+                  >
+                    {formatQuoteUsd(model.lastPrice)}
+                  </span>
+                  <span className={`text-[7px] font-medium tabular-nums leading-tight md:text-[8px] ${changeClass}`}>
+                    {change >= 0 ? '+' : '−'}
+                    {abs24hFmt} ({change >= 0 ? '+' : ''}
+                    {change.toFixed(2)}%)
+                  </span>
+                </div>
+              )}
             </div>
-            {onSetupModeToggle ? (
-              <div className="shrink-0">
-                <SetupToggle isActive={setupMode === true} onToggle={onSetupModeToggle} />
+            <div className="ml-auto flex min-w-0 max-w-full shrink-0 items-end justify-end gap-x-1 gap-y-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-x-1.5 md:gap-y-1">
+              <div className="flex w-max shrink-0 flex-nowrap items-end justify-end gap-1 md:gap-1.5">
+                {timeframeOptions.map((intv) => (
+                  <button
+                    key={intv.value}
+                    type="button"
+                    onClick={() => onChartIntervalChange(intv.value)}
+                    className={`shrink-0 rounded px-[6px] py-[3px] text-[8px] font-medium uppercase leading-none tracking-wide transition md:px-2 md:py-1 md:text-[9px] ${
+                      chartInterval === intv.value
+                        ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/25'
+                        : 'bg-white/[0.04] text-sigflo-muted hover:bg-white/[0.07] hover:text-sigflo-text'
+                    }`}
+                  >
+                    {intv.label}
+                  </button>
+                ))}
               </div>
-            ) : null}
-            <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
-            <div className="flex shrink-0 items-end pb-px">{perpTimeCluster}</div>
+              {onSetupModeToggle ? (
+                <div className="shrink-0">
+                  <SetupToggle isActive={setupMode === true} onToggle={onSetupModeToggle} />
+                </div>
+              ) : null}
+              <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
+              <div className="flex shrink-0 items-end pb-px">{perpTimeCluster}</div>
+            </div>
           </div>
-        </div>
+          {liveTradeMode && liveHeaderMetrics && !suppressExchangeHeroLivePrice ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#00ffc8]/12 bg-gradient-to-r from-[#00ffc8]/[0.06] via-black/20 to-transparent px-[4.5px] py-[4px] md:px-[5.5px]">
+              <span className="text-[6px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3]/90 md:text-[7px]">
+                Active trade
+              </span>
+              <span className="text-[7px] font-medium tabular-nums text-sigflo-muted md:text-[8px]">
+                Risk{' '}
+                <span className="text-rose-200/90">{liveHeaderMetrics.riskPercent.toFixed(1)}%</span>
+                <span className="text-sigflo-muted/60"> · </span>
+                Target{' '}
+                <span className="text-emerald-200/90">{liveHeaderMetrics.rewardPercent.toFixed(1)}%</span>
+                <span className="text-sigflo-muted/60"> · </span>
+                R:R{' '}
+                <span className="text-white/90">
+                  {Number.isFinite(liveHeaderMetrics.rrRatio) && liveHeaderMetrics.rrRatio > 0
+                    ? liveHeaderMetrics.rrRatio.toFixed(1)
+                    : '—'}
+                </span>
+              </span>
+              {liveHeaderMetrics.badge ? (
+                <span className="rounded border border-cyan-400/25 bg-cyan-500/10 px-1.5 py-px text-[6px] font-bold uppercase tracking-wide text-cyan-100/95 md:text-[7px]">
+                  {liveHeaderMetrics.badge}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : heroPairLabel ? (
         showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
           <div className="mb-0.5 flex min-w-0 items-center gap-1.5 border-b border-white/[0.06] pb-1 md:mb-1.5 md:gap-2 md:pb-1.5">
@@ -780,17 +1098,17 @@ export function PriceChartCard({
               </div>
             </div>
             <div className="flex min-w-0 max-w-[58%] shrink-0 items-center gap-1 sm:max-w-[62%] md:max-w-[55%] md:gap-1.5">
-              <span className="hidden shrink-0 text-[7px] font-semibold uppercase tracking-[0.16em] text-sigflo-muted/80 sm:inline md:text-[8px]">
+              <span className="hidden shrink-0 text-[9px] font-semibold uppercase tracking-[0.16em] text-sigflo-muted/80 sm:inline md:text-[10px]">
                 TF
               </span>
               <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex w-max items-center justify-end gap-0.5 pr-0.5">
+                <div className="flex w-max items-center justify-end gap-1 pr-0.5">
                   {timeframeOptions.map((intv) => (
                     <button
                       key={intv.value}
                       type="button"
                       onClick={() => onChartIntervalChange(intv.value)}
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-bold leading-none transition md:px-2 md:py-0.5 md:text-[9px] ${
+                      className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold leading-none transition md:px-2.5 md:py-1 md:text-[11px] ${
                         chartInterval === intv.value
                           ? 'bg-sigflo-accent/18 text-sigflo-accent ring-1 ring-sigflo-accent/35'
                           : 'border border-white/[0.06] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.1] hover:text-sigflo-text'
@@ -878,11 +1196,11 @@ export function PriceChartCard({
         </p>
       ) : null}
       <div
-        className={`mt-0 min-h-0 overflow-hidden ${
+        className={`mt-0 min-h-0 overflow-hidden transition-[box-shadow] duration-500 ${
           exchangeTfHero
             ? 'rounded-t-none rounded-b-lg border border-t-0 border-white/[0.08] bg-black/20 md:rounded-b-xl'
             : 'rounded-lg border border-white/[0.08] bg-black/30 md:rounded-xl'
-        }`}
+        } ${chartFrameToneClass}`}
       >
         <div
           ref={chartContainerRef}
@@ -893,8 +1211,8 @@ export function PriceChartCard({
           }
           style={chartPlotHeightPx != null ? { height: chartPlotHeightPx } : undefined}
         />
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
-          <div className="flex min-w-0 flex-wrap items-center gap-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:text-[8px]">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
+          <div className="relative z-10 flex min-w-0 flex-wrap items-center gap-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:text-[8px]">
             <button
               type="button"
               onClick={() => setShowVolume((v) => !v)}
@@ -917,8 +1235,12 @@ export function PriceChartCard({
                   onClick={() => {
                     if (setupGated) {
                       setSoloOverlayFromClean(key);
-                      onSetupModeToggle?.();
+                      if (onRequestSetupMode) onRequestSetupMode();
+                      else onSetupModeToggle?.();
                       return;
+                    }
+                    if (liveTradeOverlayPreset) {
+                      liveOverlayTouchedKeysRef.current.add(key);
                     }
                     setVisibleLevels((prev) => ({
                       ...prev,
