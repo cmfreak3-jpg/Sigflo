@@ -1,6 +1,9 @@
+import { ensureRootEnvLoaded } from './lib/load-root-env.mjs';
 import { runAiSuggest } from './lib/ai-suggest-core.mjs';
 
 export const handler = async (event) => {
+  ensureRootEnvLoaded();
+
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204 };
   }

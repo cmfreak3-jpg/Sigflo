@@ -27,10 +27,12 @@ export default function App() {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [location.pathname, location.search]);
 
-  if (isLoading) return <SplashScreen />;
-
   return (
-    <ErrorBoundary key={location.pathname}>
+    <ErrorBoundary>
+      {isLoading ? (
+        <SplashScreen />
+      ) : (
+        <ErrorBoundary key={location.pathname}>
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route element={<AppShell />}>
@@ -46,6 +48,8 @@ export default function App() {
       <Route path="/trade" element={<TradeScreen />} />
       <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
+        </ErrorBoundary>
+      )}
     </ErrorBoundary>
   );
 }

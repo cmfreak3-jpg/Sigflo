@@ -42,6 +42,10 @@ type ActivePositionCardProps = {
   exitAiModeLabel: string;
   exitStrategyLabel: string;
   scenarioSummary: string;
+  /** Exchange-backed position uses Bybit uPnL wording. */
+  executionSource?: 'paper' | 'exchange';
+  /** When set (e.g. from Bybit snapshot), show exchange unrealized instead of mark-derived. */
+  exchangeUnrealizedUsd?: number | null;
 };
 
 export function ActivePositionCard({
@@ -51,15 +55,25 @@ export function ActivePositionCard({
   exitAiModeLabel,
   exitStrategyLabel,
   scenarioSummary,
+  executionSource = 'paper',
+  exchangeUnrealizedUsd,
 }: ActivePositionCardProps) {
   const prevPnlRef = useRef<number | null>(null);
-  const { pnlUsd, roePct, movePct } = pnlWithRoe(
+  const fromMark = pnlWithRoe(
     position.side,
     position.entryPrice,
     markPrice,
     position.positionNotionalUsd,
     position.marginUsd,
   );
+  const useExU =
+    executionSource === 'exchange' &&
+    exchangeUnrealizedUsd != null &&
+    Number.isFinite(exchangeUnrealizedUsd);
+  const pnlUsd = useExU ? (exchangeUnrealizedUsd as number) : fromMark.pnlUsd;
+  const roePct =
+    useExU && position.marginUsd > 0 ? ((exchangeUnrealizedUsd as number) / position.marginUsd) * 100 : fromMark.roePct;
+  const movePct = fromMark.movePct;
 
   useEffect(() => {
     prevPnlRef.current = pnlUsd;
@@ -127,9 +141,10 @@ export function ActivePositionCard({
 
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 py-2">
         <div className="min-w-0">
-          <p className="text-[7px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">Unrealized</p>
+          <p className="text-[7px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">
+            {executionSource === 'exchange' ? 'Unrealized (Bybit)' : 'Unrealized (practice)'}
+          </p>
           <motion.p
-            key={Math.round(pnlUsd * 100) / 100}
             initial={{ opacity: 0.88 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.35 }}

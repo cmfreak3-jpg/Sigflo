@@ -1,8 +1,8 @@
 import type { MarketMode, TradeSide } from '@/types/trade';
 
 /**
- * Simulated “live” position for the trade UI (Sigflo does not route orders).
- * Structured as a list so multiple cards can be shown later.
+ * Browser-only practice position for the trade UI. Long/Short does not call the exchange;
+ * balances and equity on Bybit are unchanged. For real positions, use Portfolio (read from Bybit).
  */
 export type SimulatedActivePosition = {
   id: string;

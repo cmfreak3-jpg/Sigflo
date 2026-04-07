@@ -1,4 +1,4 @@
-import { setupBandDockEmphasisClass } from '@/lib/setupBandUi';
+import { setupBandDockCompactLabel, setupBandDockEmphasisClass } from '@/lib/setupBandUi';
 import type { TradeTimingChipState } from '@/lib/tradeTimingChip';
 import { StatusChip } from '@/components/trade/StatusChip';
 import type { MarketMode } from '@/types/trade';
@@ -23,6 +23,39 @@ export type ChartDockDecisionMeta = {
   timing: { label: string; state: TradeTimingChipState };
 };
 
+/** 2×2 Trade / Setup score grid used in the chart dock (with Short/Long or beside position actions). */
+export function ChartDockScoreGrid({ dockMeta }: { dockMeta: ChartDockDecisionMeta }) {
+  const dockTealGlow =
+    'font-semibold text-cyan-200/95 [text-shadow:0_0_6px_rgba(0,255,200,0.55),0_0_14px_rgba(0,255,200,0.3)]';
+  const setupShown =
+    dockMeta.setupQualityLabel === 'Developing'
+      ? 'Building'
+      : setupBandDockCompactLabel(dockMeta.setupQualityLabel);
+  return (
+    <div
+      className="grid w-full max-w-[7.4rem] shrink grid-cols-[minmax(0,1fr)_minmax(0,1fr)] grid-rows-2 overflow-hidden rounded-[5px] border border-white/[0.14] text-[7px] font-medium tabular-nums text-sigflo-muted/90 sm:max-w-[8rem] sm:text-[8px]"
+      title={`Trade score ${dockMeta.confidenceLabel} (readiness). Setup tier ${dockMeta.setupQualityLabel} (signal structure).`}
+    >
+      <span className="flex min-h-[1.15rem] min-w-0 items-center justify-center border-r border-b border-white/[0.1] px-0.5 py-px leading-none text-sigflo-muted/90 sm:min-h-[1.25rem] sm:px-0.5">
+        Trade
+      </span>
+      <span className="flex min-h-[1.15rem] min-w-0 items-center justify-center border-b border-white/[0.1] px-0.5 py-px leading-none text-sigflo-muted/90 sm:min-h-[1.25rem] sm:px-0.5">
+        Setup
+      </span>
+      <span
+        className={`flex min-h-[1.15rem] min-w-0 items-center justify-center border-r border-white/[0.1] px-0.5 py-px text-center leading-none tabular-nums sm:min-h-[1.25rem] ${setupBandDockEmphasisClass(dockMeta.setupQualityLabel)}`}
+      >
+        <span className="min-w-0 max-w-full truncate">{setupShown}</span>
+      </span>
+      <span
+        className={`flex min-h-[1.15rem] min-w-0 items-center justify-center px-0.5 py-px leading-none tabular-nums sm:min-h-[1.25rem] ${dockTealGlow}`}
+      >
+        <span className="min-w-0 max-w-full truncate">{dockMeta.confidenceLabel}</span>
+      </span>
+    </div>
+  );
+}
+
 type ChartInlineTradeButtonsProps = ChartTradeQuickActions & {
   /** Tighter pills for the sticky price-chart dock row. */
   variant?: 'default' | 'dock';
@@ -30,6 +63,8 @@ type ChartInlineTradeButtonsProps = ChartTradeQuickActions & {
   signalBias?: 'long' | 'short' | null;
   /** Micro copy under dock buttons (confidence, setup quality, timing chip). */
   dockMeta?: ChartDockDecisionMeta | null;
+  /** When true, timing `StatusChip` is not rendered here (e.g. parent places it under Price chart). */
+  omitDockTimingChip?: boolean;
 };
 
 /** Compact Short/Long (or Sell/Buy) — e.g. price-chart dock or assistant row. */
@@ -42,6 +77,7 @@ export function ChartInlineTradeButtons({
   variant = 'default',
   signalBias = null,
   dockMeta = null,
+  omitDockTimingChip = false,
 }: ChartInlineTradeButtonsProps) {
   const isSpot = market === 'spot';
   const shortLabel = isSpot ? 'Sell' : 'Short';
@@ -97,37 +133,22 @@ export function ChartInlineTradeButtons({
   );
 
   if (variant === 'dock' && dockMeta) {
-    const dockTealGlow =
-      'font-semibold text-cyan-200/95 [text-shadow:0_0_6px_rgba(0,255,200,0.55),0_0_14px_rgba(0,255,200,0.3)]';
+    const showTimingHere = !omitDockTimingChip && dockMeta.timing.state !== 'developing';
     return (
-      <div className="flex max-w-[min(100%,24rem)] flex-wrap items-center justify-center gap-x-[6px] gap-y-1">
-        <div className="-translate-x-1 sm:-translate-x-1.5">{buttons}</div>
-        <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          <div
-            className="grid grid-cols-2 grid-rows-2 overflow-hidden rounded-md border border-white/[0.14] text-[8px] font-medium tabular-nums text-sigflo-muted/90 sm:text-[10px]"
-            title={`Trade score ${dockMeta.confidenceLabel} (readiness). Setup tier ${dockMeta.setupQualityLabel} (signal structure).`}
-          >
-            <span className="flex min-h-[1.4rem] items-center justify-center border-r border-b border-white/[0.1] px-1 py-0.5 leading-none text-sigflo-muted/90">
-              Trade
-            </span>
-            <span className="flex min-h-[1.4rem] items-center justify-center border-b border-white/[0.1] px-1 py-0.5 leading-none text-sigflo-muted/90">
-              Setup
-            </span>
-            <span
-              className={`flex min-h-[1.4rem] min-w-0 items-center justify-center border-r border-white/[0.1] px-1 py-0.5 text-center leading-none tabular-nums ${setupBandDockEmphasisClass(dockMeta.setupQualityLabel)}`}
-            >
-              <span className="min-w-0 truncate">
-                {dockMeta.setupQualityLabel === 'Developing' ? 'Building' : dockMeta.setupQualityLabel}
-              </span>
-            </span>
-            <span className={`flex min-h-[1.4rem] items-center justify-center px-1 py-0.5 leading-none tabular-nums ${dockTealGlow}`}>
-              {dockMeta.confidenceLabel}
-            </span>
-          </div>
-          {dockMeta.timing.state !== 'developing' ? (
-            <StatusChip label={dockMeta.timing.label} state={dockMeta.timing.state} compact />
-          ) : null}
+      <div
+        className={`grid w-full min-w-0 items-start gap-x-1 sm:gap-x-1.5 ${
+          showTimingHere ? 'grid-cols-[max-content_minmax(0,auto)_minmax(0,1fr)]' : 'grid-cols-[max-content_minmax(0,auto)]'
+        }`}
+      >
+        <div className="mt-2 w-max max-w-none justify-self-start sm:mt-2.5">{buttons}</div>
+        <div className="mt-2 min-w-0 max-w-full justify-self-start sm:mt-2.5">
+          <ChartDockScoreGrid dockMeta={dockMeta} />
         </div>
+        {showTimingHere ? (
+          <div className="flex min-w-0 items-center justify-end justify-self-end self-center pl-1 sm:pl-2">
+            <StatusChip label={dockMeta.timing.label} state={dockMeta.timing.state} compact />
+          </div>
+        ) : null}
       </div>
     );
   }

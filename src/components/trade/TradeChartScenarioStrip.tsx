@@ -8,7 +8,15 @@ import {
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ExitGuidance, ExitState } from '@/lib/exitGuidance';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
-import type { AutomationSafeguards, ExitAiMode, ExitStrategyPreset } from '@/types/aiExitAutomation';
+import { computeTradeEntryGuidance, type EntryGuidance } from '@/lib/tradeEntryGuidance';
+import type { TradeTimingChipState } from '@/lib/tradeTimingChip';
+import type { MarketRowStatus } from '@/types/markets';
+import type {
+  AutomationSafeguards,
+  ExitAiMode,
+  ExitStrategyPreset,
+  ExitStrategyThresholds,
+} from '@/types/aiExitAutomation';
 import type { TradeSide } from '@/types/trade';
 
 const ACCENT = '#00ffc8';
@@ -141,6 +149,12 @@ export type TradeChartScenarioStripTradeProps = {
   exitAiMode?: ExitAiMode;
   exitStrategyPreset?: ExitStrategyPreset;
   automationSafeguards?: AutomationSafeguards;
+  /** Used when exit strategy is Custom; named presets ignore. */
+  customStrategyThresholds?: Partial<ExitStrategyThresholds> | null;
+  /** Scanner row status — drives entry timing copy with scores. */
+  scannerStatus: MarketRowStatus;
+  lastPrice: number;
+  hasOpenPosition: boolean;
 };
 
 export type TradeChartScenarioStripManageProps = {
@@ -160,6 +174,10 @@ export type TradeChartScenarioStripManageProps = {
   exitAiMode?: ExitAiMode;
   exitStrategyPreset?: ExitStrategyPreset;
   automationSafeguards?: AutomationSafeguards;
+  customStrategyThresholds?: Partial<ExitStrategyThresholds> | null;
+  scannerStatus: MarketRowStatus;
+  tradeScore: number;
+  setupScore: number;
 };
 
 export type TradeChartScenarioStripProps = TradeChartScenarioStripTradeProps | TradeChartScenarioStripManageProps;
@@ -188,6 +206,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
   const exitAiMode = props.exitAiMode ?? 'manual';
   const strategyPreset = props.exitStrategyPreset ?? 'custom';
   const safeguards = props.automationSafeguards ?? DEFAULT_AUTOMATION_SAFEGUARDS;
+  const customStrategyThresholds = props.customStrategyThresholds ?? null;
 
   const { effective: exitGuidance, nextPlanned: nextPlannedAutomation } = useMemo(() => {
     if (props.mode === 'trade') {
@@ -201,6 +220,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
         trendAlignment: props.trendAlignment,
         momentumQuality: props.momentumQuality,
         strategyPreset,
+        customStrategyThresholds,
         safeguards,
         exitAiMode,
       });
@@ -216,14 +236,47 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
       momentumQuality: props.momentumQuality,
       pnlPct: props.pnlPct,
       strategyPreset,
+      customStrategyThresholds,
       safeguards,
       exitAiMode,
     });
   }, [
     props.mode,
     props.mode === 'trade'
-      ? `${props.side}|${props.entry}|${props.estimatedPnlPct}|${props.stop}|${props.target}|${props.trendAlignment}|${props.momentumQuality}|${strategyPreset}|${exitAiMode}|${JSON.stringify(safeguards)}`
-      : `${props.side}|${props.entry}|${props.mark}|${props.stop}|${props.target}|${props.trendAlignment}|${props.momentumQuality}|${props.pnlPct}|${strategyPreset}|${exitAiMode}|${JSON.stringify(safeguards)}`,
+      ? `${props.side}|${props.entry}|${props.estimatedPnlPct}|${props.stop}|${props.target}|${props.trendAlignment}|${props.momentumQuality}|${strategyPreset}|${exitAiMode}|${JSON.stringify(safeguards)}|${JSON.stringify(customStrategyThresholds)}`
+      : `${props.side}|${props.entry}|${props.mark}|${props.stop}|${props.target}|${props.trendAlignment}|${props.momentumQuality}|${props.pnlPct}|${strategyPreset}|${exitAiMode}|${JSON.stringify(safeguards)}|${JSON.stringify(customStrategyThresholds)}`,
+  ]);
+
+  const entryGuidance = useMemo(() => {
+    if (props.mode === 'trade') {
+      return computeTradeEntryGuidance({
+        marketStatus: props.scannerStatus,
+        tradeScore: props.tradeScore,
+        setupScore: props.setupScore,
+        side: props.side,
+        lastPrice: props.lastPrice,
+        planEntry: props.entry,
+        hasOpenPosition: props.hasOpenPosition,
+      });
+    }
+    return computeTradeEntryGuidance({
+      marketStatus: props.scannerStatus,
+      tradeScore: props.tradeScore,
+      setupScore: props.setupScore,
+      side: props.side,
+      lastPrice: props.mark,
+      planEntry: props.entry,
+      hasOpenPosition: true,
+    });
+  }, [
+    props.mode,
+    props.scannerStatus,
+    props.tradeScore,
+    props.setupScore,
+    props.side,
+    props.entry,
+    props.mode === 'trade' ? props.lastPrice : props.mark,
+    props.mode === 'trade' ? props.hasOpenPosition : true,
   ]);
 
   const prevExitRef = useRef<ExitState | undefined>(undefined);
@@ -314,9 +367,9 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
           <div className="min-h-0 overflow-hidden">
             <div className="border-t border-white/[0.08] bg-black/40 px-2 py-1.5 text-sigflo-muted">
               {isTrade ? (
-                <TradeScenarioPanelTrade {...props} exitGuidance={exitGuidance} />
+                <TradeScenarioPanelTrade {...props} exitGuidance={exitGuidance} entryGuidance={entryGuidance} />
               ) : (
-                <TradeScenarioPanelManage {...props} exitGuidance={exitGuidance} />
+                <TradeScenarioPanelManage {...props} exitGuidance={exitGuidance} entryGuidance={entryGuidance} />
               )}
               <p className="mt-1 border-t border-white/[0.06] pt-1 text-[7px] leading-snug text-sigflo-muted/80 sm:text-[8px]">
                 {isTrade
@@ -520,6 +573,13 @@ function exitConfidenceColor(label: ExitGuidance['confidenceLabel']) {
   return CONF_LOW;
 }
 
+function entryTimingStroke(state: TradeTimingChipState) {
+  if (state === 'ready') return ACCENT;
+  if (state === 'developing') return CONF_MED;
+  if (state === 'early') return '#7dd3fc';
+  return CONF_LOW;
+}
+
 function ExitAutomationMicroSummary(props: {
   exitAiMode: ExitAiMode;
   strategyPreset: ExitStrategyPreset;
@@ -531,7 +591,10 @@ function ExitAutomationMicroSummary(props: {
   const confColor = exitConfidenceColor(props.guidance.confidenceLabel);
   const stateColor = exitStateColor(props.guidance.state);
   const modeLabel = EXIT_AI_MODE_LABEL[props.exitAiMode];
-  const showHeadlinePrefix = props.guidance.state !== 'trim' && props.guidance.headline.length > 0;
+  const showHeadlinePrefix =
+    props.guidance.state !== 'trim' &&
+    props.guidance.state !== 'exit' &&
+    props.guidance.headline.length > 0;
   const ariaSummary = `Exit automation: ${modeLabel}, strategy ${strat}. ${
     showHeadlinePrefix ? `${props.guidance.headline}. ` : ''
   }Next: ${props.nextPlanned}. Confidence ${props.guidance.confidenceLabel}.`;
@@ -575,7 +638,7 @@ function ExitGuidanceExpandedBlock({ eg }: { eg: ExitGuidance | null }) {
 
   return (
     <div
-      className="col-span-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors duration-300 sm:col-span-3"
+      className="min-h-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors duration-300"
       style={{ boxShadow: `inset 0 0 0 1px ${stroke}22` }}
     >
       <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: stroke }}>
@@ -601,12 +664,54 @@ function ExitGuidanceExpandedBlock({ eg }: { eg: ExitGuidance | null }) {
   );
 }
 
+function EntryGuidanceExpandedBlock({ g }: { g: EntryGuidance }) {
+  const stroke = entryTimingStroke(g.timingState);
+  const confColor = exitConfidenceColor(g.confidenceLabel);
+
+  return (
+    <div
+      className="min-h-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors duration-300"
+      style={{ boxShadow: `inset 0 0 0 1px ${stroke}22` }}
+    >
+      <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: stroke }}>
+        Entry guidance
+      </p>
+      <p className="mb-1 text-[9px] font-semibold leading-tight" style={{ color: stroke }}>
+        Timing: {g.timingLabel}
+      </p>
+      <dl className="space-y-1 text-[10px] leading-snug text-white">
+        <div>
+          <dt className="text-[8px] uppercase tracking-wider text-sigflo-muted">Suggested action</dt>
+          <dd className="font-semibold text-white/95">{g.action}</dd>
+        </div>
+        <div>
+          <dt className="text-[8px] uppercase tracking-wider text-sigflo-muted">Reason</dt>
+          <dd className="text-white/85">{g.reason}</dd>
+        </div>
+        <div>
+          <dt className="text-[8px] uppercase tracking-wider text-sigflo-muted">Confidence</dt>
+          <dd className="font-semibold" style={{ color: confColor }}>
+            {g.confidenceLabel}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 function TradeScenarioPanelTrade(
-  props: TradeChartScenarioStripTradeProps & { exitGuidance: ExitGuidance | null },
+  props: TradeChartScenarioStripTradeProps & {
+    exitGuidance: ExitGuidance | null;
+    entryGuidance: EntryGuidance;
+  },
 ) {
   return (
-    <div className="grid grid-cols-2 gap-1.5 text-white sm:grid-cols-3">
-      <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
+    <div className="flex flex-col gap-1.5 text-white">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
+        <EntryGuidanceExpandedBlock g={props.entryGuidance} />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       <ScenarioMetricCell label="Size">
         <span className="tabular-nums">${Math.round(props.positionSizeUsd).toLocaleString('en-US')}</span>
       </ScenarioMetricCell>
@@ -663,15 +768,23 @@ function TradeScenarioPanelTrade(
         </ScenarioMetricCell>
       </div>
     </div>
+    </div>
   );
 }
 
 function TradeScenarioPanelManage(
-  props: TradeChartScenarioStripManageProps & { exitGuidance: ExitGuidance | null },
+  props: TradeChartScenarioStripManageProps & {
+    exitGuidance: ExitGuidance | null;
+    entryGuidance: EntryGuidance;
+  },
 ) {
   return (
-    <div className="grid grid-cols-2 gap-1.5 text-white sm:grid-cols-3">
-      <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
+    <div className="flex flex-col gap-1.5 text-white">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
+        <EntryGuidanceExpandedBlock g={props.entryGuidance} />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       <ScenarioMetricCell label="Pair">
         <span className="truncate font-semibold">{props.pair}</span>
       </ScenarioMetricCell>
@@ -695,6 +808,7 @@ function TradeScenarioPanelManage(
       <ScenarioMetricCell label="Size" className="col-span-2">
         <span className="font-semibold">{props.sizeLabel}</span>
       </ScenarioMetricCell>
+    </div>
     </div>
   );
 }

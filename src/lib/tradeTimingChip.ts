@@ -3,6 +3,18 @@ import type { MarketRowStatus } from '@/types/markets';
 export type TradeTimingChipState = 'early' | 'developing' | 'ready' | 'invalid';
 
 /** Alpha and line emphasis for chart trade overlays (entry / stop / target) from timing state. */
+/** Chart overlay line opacity from `tradeTimingOverlayVisual` — floored so entry/target stay readable when timing is “invalid”. */
+export function tradeTimingLineAlpha(
+  level: 'entry' | 'stop' | 'target' | 'liquidation',
+  timingAlphaScale: number,
+): number {
+  let a = timingAlphaScale;
+  if (level === 'stop' || level === 'liquidation') {
+    return Math.max(0.42, a);
+  }
+  return Math.max(0.35, a);
+}
+
 export function tradeTimingOverlayVisual(state: TradeTimingChipState): {
   alphaScale: number;
   /** Extra width on entry line when “ready” (subtle emphasis vs glow). */

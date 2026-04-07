@@ -4,16 +4,19 @@ import {
   appendActivityEntry,
   parseActivityLogJson,
 } from '@/lib/aiExitAutomation';
+import { DEFAULT_CUSTOM_STRATEGY_THRESHOLDS, sanitizeExitStrategyThresholds } from '@/lib/exitGuidance';
 import type {
   AutomationSafeguards,
   ExitAiMode,
   ExitAutomationActivityEntry,
   ExitStrategyPreset,
+  ExitStrategyThresholds,
 } from '@/types/aiExitAutomation';
 
 const LS_MODE = 'sigflo.exitAi.mode';
 const LS_STRATEGY = 'sigflo.exitAi.strategy';
 const LS_SAFEGUARDS = 'sigflo.exitAi.safeguards';
+const LS_CUSTOM_THRESHOLDS = 'sigflo.exitAi.customThresholds';
 
 function loadMode(): ExitAiMode {
   const v = window.localStorage.getItem(LS_MODE);
@@ -49,6 +52,17 @@ function loadSafeguards(): AutomationSafeguards {
   }
 }
 
+function loadCustomStrategyThresholds(): ExitStrategyThresholds {
+  try {
+    const raw = window.localStorage.getItem(LS_CUSTOM_THRESHOLDS);
+    if (!raw) return { ...DEFAULT_CUSTOM_STRATEGY_THRESHOLDS };
+    const p = JSON.parse(raw) as Partial<ExitStrategyThresholds>;
+    return sanitizeExitStrategyThresholds(p);
+  } catch {
+    return { ...DEFAULT_CUSTOM_STRATEGY_THRESHOLDS };
+  }
+}
+
 function activityStorageKey(scopeKey: string) {
   return `sigflo.exitAi.activity.${scopeKey}`;
 }
@@ -57,6 +71,8 @@ export function useExitAutomation(scopeKey: string) {
   const [mode, setMode] = useState<ExitAiMode>(loadMode);
   const [strategy, setStrategy] = useState<ExitStrategyPreset>(loadStrategy);
   const [safeguards, setSafeguards] = useState<AutomationSafeguards>(loadSafeguards);
+  const [customStrategyThresholds, setCustomStrategyThresholds] =
+    useState<ExitStrategyThresholds>(loadCustomStrategyThresholds);
   const [activity, setActivity] = useState<ExitAutomationActivityEntry[]>([]);
 
   useEffect(() => {
@@ -74,6 +90,18 @@ export function useExitAutomation(scopeKey: string) {
   useEffect(() => {
     window.localStorage.setItem(LS_SAFEGUARDS, JSON.stringify(safeguards));
   }, [safeguards]);
+
+  useEffect(() => {
+    window.localStorage.setItem(LS_CUSTOM_THRESHOLDS, JSON.stringify(customStrategyThresholds));
+  }, [customStrategyThresholds]);
+
+  const mergeCustomStrategyThresholds = useCallback((patch: Partial<ExitStrategyThresholds>) => {
+    setCustomStrategyThresholds((prev) => sanitizeExitStrategyThresholds({ ...prev, ...patch }));
+  }, []);
+
+  const resetCustomStrategyThresholds = useCallback(() => {
+    setCustomStrategyThresholds({ ...DEFAULT_CUSTOM_STRATEGY_THRESHOLDS });
+  }, []);
 
   const persistActivity = useCallback((next: ExitAutomationActivityEntry[]) => {
     window.localStorage.setItem(activityStorageKey(scopeKey), JSON.stringify(next));
@@ -103,10 +131,23 @@ export function useExitAutomation(scopeKey: string) {
       setStrategy,
       safeguards,
       setSafeguards,
+      customStrategyThresholds,
+      mergeCustomStrategyThresholds,
+      resetCustomStrategyThresholds,
       activity,
       pushActivity,
       clearActivity,
     }),
-    [mode, strategy, safeguards, activity, pushActivity, clearActivity],
+    [
+      mode,
+      strategy,
+      safeguards,
+      customStrategyThresholds,
+      mergeCustomStrategyThresholds,
+      resetCustomStrategyThresholds,
+      activity,
+      pushActivity,
+      clearActivity,
+    ],
   );
 }

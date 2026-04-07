@@ -54,3 +54,9 @@ export function setupBandDockEmphasisClass(bandShort: string): string {
 export function setupBandDockEmphasisClassFromFullLabel(full: SetupScoreLabel | string): string {
   return setupBandDockEmphasisClass(setupBandShortFromFullLabel(full));
 }
+
+/** Chart dock grid only — keeps the 2×2 box narrow so the row fits before the collapse chevron. */
+export function setupBandDockCompactLabel(bandShort: string): string {
+  if (bandShort === 'Risky / Exhausted') return 'Risky/exh.';
+  return bandShort;
+}

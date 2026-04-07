@@ -1,16 +1,17 @@
 import { useState } from 'react';
 
 const PARTIAL_MIN_PCT = 5;
-const PARTIAL_MAX_PCT = 95;
+const PARTIAL_MAX_PCT = 100;
 const PARTIAL_STEP = 5;
 const PARTIAL_DEFAULT_PCT = 25;
 
 export type PositionActionsBarProps = {
   variant?: 'dock' | 'sheet';
-  /** Primary: close active / focused position */
-  onClosePosition: () => void;
   onCloseAll: () => void;
-  /** Fraction of position to scale out (e.g. 0.25 = 25%). Called on slider release or Enter. */
+  /**
+   * Fraction of position to close (e.g. 0.25 = 25%). Invoked only when the user taps **Close position**
+   * (after choosing a percentage on the partial slider — the slider does not submit on release).
+   */
   onPartialClose: (fraction: number) => void;
   disabled?: boolean;
   className?: string;
@@ -21,7 +22,6 @@ export type PositionActionsBarProps = {
  */
 export function PositionActionsBar({
   variant = 'dock',
-  onClosePosition,
   onCloseAll,
   onPartialClose,
   disabled = false,
@@ -30,15 +30,13 @@ export function PositionActionsBar({
   const isDock = variant === 'dock';
   const pad = isDock ? 'px-2 py-1' : 'px-3 py-3';
   const [partialPct, setPartialPct] = useState(PARTIAL_DEFAULT_PCT);
-  const [partialOpen, setPartialOpen] = useState(true);
+  const [partialOpen, setPartialOpen] = useState(false);
   const partialHintId = 'sigflo-partial-slider-hint';
   const partialPanelId = 'sigflo-partial-panel';
 
-  const commitPartialFromInput = (el: HTMLInputElement) => {
+  const confirmClose = () => {
     if (disabled) return;
-    const v = Number(el.value);
-    if (!Number.isFinite(v)) return;
-    onPartialClose(v / 100);
+    onPartialClose(partialPct / 100);
   };
 
   return (
@@ -51,7 +49,12 @@ export function PositionActionsBar({
         <button
           type="button"
           disabled={disabled}
-          onClick={onClosePosition}
+          onClick={confirmClose}
+          aria-label={
+            partialPct >= 100
+              ? 'Close full position'
+              : `Close position: submit ${partialPct} percent scale-out`
+          }
           className="flex min-h-[34px] items-center justify-center rounded-lg bg-gradient-to-b from-rose-500/95 to-rose-600/95 text-[11px] font-bold text-white shadow-[0_0_14px_-6px_rgba(248,113,113,0.45)] ring-1 ring-rose-300/20 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[36px] sm:text-xs"
         >
           Close position
@@ -100,7 +103,7 @@ export function PositionActionsBar({
           {partialOpen ? (
             <>
               <p id={partialHintId} className="sr-only">
-                Drag to choose how much to scale out, then release. Or adjust with arrow keys and press Enter to apply.
+                Choose what fraction of the position to close. This does not submit until you tap Close position.
               </p>
               <label className="mt-0.5 flex h-4 cursor-pointer items-center py-0">
                 <span className="sr-only">Percent of position to scale out</span>
@@ -112,13 +115,6 @@ export function PositionActionsBar({
                   value={partialPct}
                   disabled={disabled}
                   onChange={(e) => setPartialPct(Number(e.target.value))}
-                  onPointerUp={(e) => commitPartialFromInput(e.currentTarget)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      commitPartialFromInput(e.currentTarget);
-                    }
-                  }}
                   className="sigflo-partial-slider sigflo-partial-slider--compact h-4 w-full min-w-0 cursor-pointer touch-manipulation disabled:cursor-not-allowed disabled:opacity-40"
                   aria-valuemin={PARTIAL_MIN_PCT}
                   aria-valuemax={PARTIAL_MAX_PCT}
@@ -128,7 +124,7 @@ export function PositionActionsBar({
                 />
               </label>
               <p className="mt-0 text-center text-[5px] font-medium leading-none text-sigflo-muted/70" aria-hidden>
-                Release to scale out
+                Tap Close above to confirm
               </p>
             </>
           ) : null}

@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { requireAuth } from './middleware/auth.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { portfolioRouter } from './routes/portfolio.js';
+import { tradeRouter } from './routes/trade.js';
 import { log } from './lib/logger.js';
 
 const app = express();
@@ -30,6 +31,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/integrations', requireAuth, integrationsRouter);
 app.use('/api/portfolio', requireAuth, portfolioRouter);
+app.use('/api/trade', requireAuth, tradeRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   log('error', 'Unhandled API error.', { error: String(err) });

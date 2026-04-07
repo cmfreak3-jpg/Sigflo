@@ -26,15 +26,17 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
           apiSecret: decryptText(integration.encryptedSecret),
           passphrase: integration.encryptedPassphrase ? decryptText(integration.encryptedPassphrase) : undefined,
         };
-        const [balances, positions] = await Promise.all([
+        const [balances, positions, accountBreakdown] = await Promise.all([
           adapter.fetchBalances(creds),
           adapter.fetchPositions(creds),
+          adapter.fetchAccountBreakdown ? adapter.fetchAccountBreakdown(creds) : Promise.resolve(null),
         ]);
         return {
           exchange: integration.exchange,
           status: 'connected',
           balances,
           positions,
+          accountBreakdown,
         };
       } catch (error) {
         log('warn', 'Portfolio snapshot failed.', { exchange: integration.exchange, error: String(error) });
@@ -43,6 +45,7 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
           status: 'error',
           balances: [],
           positions: [],
+          accountBreakdown: null,
         };
       }
     }),

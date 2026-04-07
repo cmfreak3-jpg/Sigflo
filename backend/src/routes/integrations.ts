@@ -4,6 +4,7 @@ import type { AuthedRequest } from '../middleware/auth.js';
 import { getAdapter } from '../exchanges/registry.js';
 import type { ExchangeId } from '../exchanges/types.js';
 import { log } from '../lib/logger.js';
+import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { encryptText } from '../security/crypto.js';
 import { deleteIntegration, insertAuditEvent, listIntegrations, upsertIntegration } from '../repositories/integrationsRepo.js';
 
@@ -19,9 +20,13 @@ export const integrationsRouter = Router();
 
 for (const exchange of exchanges) {
   integrationsRouter.post(`/${exchange}/connect`, async (req: AuthedRequest, res) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const parsed = connectBodySchema.safeParse(req.body);
-    if (!parsed.success || !req.user) {
-      res.status(400).json({ error: 'Invalid request.' });
+    if (!parsed.success) {
+      res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
       return;
     }
     const adapter = getAdapter(exchange);
@@ -49,7 +54,7 @@ for (const exchange of exchanges) {
         userId: req.user.userId,
         exchange,
         eventType: 'connect',
-        detail: 'Connected with read-only permissions.',
+        detail: validation.message,
       });
       res.json({
         id: saved.id,

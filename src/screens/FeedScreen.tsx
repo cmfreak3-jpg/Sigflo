@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { SignalCard } from '@/components/feed/SignalCard';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
+import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
+import { tradeChartIntervalShortLabel } from '@/lib/tradeChartIntervalPreference';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { deriveMarketStatus, isFeedActionableOpportunity } from '@/lib/marketScannerRows';
 
@@ -22,6 +25,7 @@ export function FeedScreen() {
       ? queryFilter
       : 'all';
   const [filter, setFilter] = useState<FeedFilter>(initialFilter);
+  const [newsScanOpen, setNewsScanOpen] = useState(false);
   const { signals: liveSignals, loading, mode, connection } = useSignalEngine();
 
   useEffect(() => {
@@ -45,7 +49,8 @@ export function FeedScreen() {
     : connection === 'connected'
       ? 'bg-sigflo-accent'
       : 'bg-slate-500';
-  const miniChartsByPair = useFeedMiniCharts(signals.map((s) => s.pair));
+  const feedChartInterval = useSyncedTradeChartInterval();
+  const miniChartsByPair = useFeedMiniCharts(signals.map((s) => s.pair), { interval: feedChartInterval });
 
   return (
     <div className="pb-6 pt-4">
@@ -98,6 +103,21 @@ export function FeedScreen() {
           ) : null}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setNewsScanOpen(true)}
+          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-left transition hover:border-cyan-400/22 hover:bg-white/[0.05]"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-200/85">Market pulse</p>
+            <p className="mt-0.5 text-[13px] font-semibold text-white">What matters today</p>
+            <p className="mt-0.5 text-[11px] text-sigflo-muted">AI scan of live crypto & macro headlines</p>
+          </div>
+          <span className="shrink-0 text-lg text-cyan-300/75" aria-hidden>
+            →
+          </span>
+        </button>
+
         {/* Filter chips */}
         <div className="flex gap-2" role="tablist" aria-label="Filter signals">
           {filterChips.map((chip) => {
@@ -124,10 +144,17 @@ export function FeedScreen() {
         {/* Signal cards */}
         <div className="space-y-4">
           {signals.map((s) => (
-            <SignalCard key={s.id} signal={s} miniCandles={miniChartsByPair[s.pair.toUpperCase()]} />
+            <SignalCard
+              key={s.id}
+              signal={s}
+              miniCandles={miniChartsByPair[s.pair.toUpperCase()]}
+              intervalLabel={tradeChartIntervalShortLabel(feedChartInterval)}
+            />
           ))}
         </div>
       </section>
+
+      <MarketNewsScanSheet open={newsScanOpen} onClose={() => setNewsScanOpen(false)} />
     </div>
   );
 }

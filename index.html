@@ -6,6 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#050506" />
     <title>Sigflo</title>
+    <!-- If the CSS bundle fails to load (wrong deploy base path), avoid a blank white screen -->
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+        background: #050506;
+        color: #f4f4f5;
+      }
+    </style>
   </head>
   <body class="bg-sigflo-bg text-sigflo-text antialiased">
     <div id="root"></div>

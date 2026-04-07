@@ -5,6 +5,6 @@
  * Do not reintroduce literal `260` / `120` / `116` / `56` etc. on `ChartHeader`,
  * `TradeScreen`, or `PriceChartCard` defaults — that caused repeated drift.
  */
-/** 20% smaller than prior 130 / 60 */
-export const TRADE_CHART_PLOT_EXPANDED_PX = 104;
-export const TRADE_CHART_PLOT_COLLAPSED_PX = 48;
+/** Expanded / collapsed plot heights (px); keep in sync if layout changes. */
+export const TRADE_CHART_PLOT_EXPANDED_PX = 125;
+export const TRADE_CHART_PLOT_COLLAPSED_PX = 58;

@@ -10,6 +10,7 @@ export function TradeStats({
   rrRatio,
   variant = 'default',
   compact = false,
+  layout = 'inline',
 }: {
   riskPercent: number;
   rewardPercent: number;
@@ -18,8 +19,32 @@ export function TradeStats({
   variant?: 'default' | 'strip';
   /** Smaller type + tight line for inline dock row. */
   compact?: boolean;
+  /** `dockGrid` — 2×2 + R:R row for the chart dock (saves horizontal space). */
+  layout?: 'inline' | 'dockGrid';
 }) {
   const rrOk = Number.isFinite(rrRatio) && rrRatio > 0;
+  if (variant === 'strip' && layout === 'dockGrid') {
+    return (
+      <div
+        role="group"
+        aria-label="Target, risk, and reward-to-risk"
+        className="grid w-max shrink-0 grid-cols-2 gap-x-2 gap-y-px text-[8px] tabular-nums leading-none sm:gap-x-2.5 sm:text-[9px]"
+      >
+        <span className="text-center font-semibold text-emerald-200/90">{fmtSignedPct(rewardPercent)}</span>
+        <span className="text-center font-semibold text-rose-200/85">{fmtSignedPct(-Math.abs(riskPercent))}</span>
+        <span className="text-center text-[6.5px] font-semibold uppercase tracking-[0.08em] text-sigflo-muted/88 sm:text-[7.5px]">
+          target
+        </span>
+        <span className="text-center text-[6.5px] font-semibold uppercase tracking-[0.08em] text-sigflo-muted/88 sm:text-[7.5px]">
+          risk
+        </span>
+        <span className="col-span-2 border-t border-white/[0.08] pt-0.5 text-center text-[6.5px] text-sigflo-muted/90 sm:text-[7.5px]">
+          R:R{' '}
+          <span className="font-semibold tabular-nums text-cyan-200/90">{rrOk ? rrRatio.toFixed(1) : '—'}</span>
+        </span>
+      </div>
+    );
+  }
   const inner = (
     <>
       <span className="font-semibold text-emerald-200/90 tabular-nums">{fmtSignedPct(rewardPercent)}</span>

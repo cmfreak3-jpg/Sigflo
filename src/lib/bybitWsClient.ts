@@ -25,6 +25,14 @@ export type BybitWsTicker = {
   price24hPcnt: number;
 };
 
+/** Latest print from `publicTrade.{symbol}` — pushes on each trade batch (faster than ticker for last price). */
+export type BybitWsPublicTrade = {
+  symbol: string;
+  price: number;
+  /** Exchange trade time (ms). */
+  ts: number;
+};
+
 export type BybitWsClientOptions = {
   /** Kline topics (detectors / charts). Prefer this over `symbols`. */
   klineSymbols?: string[];
@@ -37,8 +45,11 @@ export type BybitWsClientOptions = {
   symbols?: string[];
   klineIntervals?: WsTopicInterval[];
   includeTickers?: boolean;
+  /** `publicTrade.{symbol}` for each `klineSymbols` entry — tick-level last prints. */
+  includePublicTrades?: boolean;
   onKline?: (kline: BybitWsKline) => void;
   onTicker?: (ticker: BybitWsTicker) => void;
+  onPublicTrade?: (trade: BybitWsPublicTrade) => void;
   onConnectionChange?: (state: WsConnection) => void;
   onLog?: (msg: string) => void;
 };
@@ -129,6 +140,7 @@ export class BybitWsClient {
         if (!topic || !data) return;
         if (topic.startsWith('kline.')) this.handleKline(topic, data);
         if (topic.startsWith('ticker.')) this.handleTicker(topic, data);
+        if (topic.startsWith('publicTrade.')) this.handlePublicTrade(topic, data);
       } catch {
         // Ignore malformed payloads.
       }
@@ -154,7 +166,10 @@ export class BybitWsClient {
     const intervals = this.options.klineIntervals ?? ['5', '15'];
     const klineTopics = this.klineSymbols.flatMap((symbol) => intervals.map((i) => `kline.${i}.${symbol}`));
     const tickerTopics = this.options.includeTickers ? this.tickerSymbols.map((symbol) => `ticker.${symbol}`) : [];
-    const args = [...klineTopics, ...tickerTopics];
+    const tradeTopics = this.options.includePublicTrades
+      ? this.klineSymbols.map((symbol) => `publicTrade.${symbol}`)
+      : [];
+    const args = [...klineTopics, ...tickerTopics, ...tradeTopics];
     this.ws.send(JSON.stringify({ op: 'subscribe', args }));
     this.log(`[WS] subscriptions active: ${args.length} topics`);
   }
@@ -195,6 +210,19 @@ export class BybitWsClient {
       turnover24h: toNum(row.turnover24h),
       price24hPcnt: toNum(row.price24hPcnt),
     });
+  }
+
+  /** One callback per WS message using the newest trade in the batch (`data` sorted ascending by time). */
+  private handlePublicTrade(topic: string, data: unknown) {
+    const symbol = topic.startsWith('publicTrade.') ? topic.slice('publicTrade.'.length) : '';
+    if (!symbol) return;
+    const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+    if (rows.length === 0) return;
+    const last = rows[rows.length - 1];
+    const price = toNum(last.p);
+    if (!(price > 0)) return;
+    const ts = toNum(last.T);
+    this.options.onPublicTrade?.({ symbol, price, ts });
   }
 }
 

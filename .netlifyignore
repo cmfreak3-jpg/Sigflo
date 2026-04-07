@@ -1,0 +1,3 @@
+# Shrink upload context (build still runs from full git checkout on Netlify).
+.cursor
+**/.DS_Store

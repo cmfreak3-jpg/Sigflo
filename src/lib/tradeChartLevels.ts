@@ -1,9 +1,8 @@
 /**
  * Shared trade level colors for chart + UI (live trade mode).
- * Entry: teal/cyan · Target: green · Stop: red · Trim: amber · Last: cyan.
+ * Entry: teal/cyan · Target: green · Stop: red · Trim: amber.
  */
 export const TRADE_CHART_LEVEL_COLORS = {
-  last: '#22d3ee',
   entry: '#2dd4bf',
   target: '#4ade80',
   stop: '#f87171',
@@ -23,12 +22,11 @@ export type TradeChartAuxLine = {
   title: string;
 };
 
-type OverlayLevelKey = 'last' | 'entry' | 'stop' | 'target' | 'liquidation';
+type OverlayLevelKey = 'entry' | 'stop' | 'target' | 'liquidation';
 
 /** All trade overlay toggles off (setup / clean default). */
 export function chartOverlayPresetSetupLevels(): Record<OverlayLevelKey, boolean> {
   return {
-    last: false,
     entry: false,
     stop: false,
     target: false,
@@ -37,7 +35,7 @@ export function chartOverlayPresetSetupLevels(): Record<OverlayLevelKey, boolean
 }
 
 /**
- * Live trade default visibility: entry, stop, target, last on; liquidation only when a valid price exists.
+ * Live trade default visibility: entry, stop, target on; liquidation only when a valid price exists.
  * Trim / scale-out lines are driven separately via `auxiliaryPriceLines` on the chart card.
  */
 export function buildChartOverlayPresetLive(
@@ -50,7 +48,6 @@ export function buildChartOverlayPresetLive(
     Number.isFinite(liquidationPrice) &&
     liquidationPrice > 0;
   return {
-    last: true,
     entry: true,
     stop: true,
     target: true,

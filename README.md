@@ -48,3 +48,14 @@ Set frontend env values (for local):
 In Supabase, add redirect URLs for your app origin (e.g. `http://localhost:3999/profile` when using Netlify Dev; matches `netlify.toml` `[dev] port`).
 
 Signed-in users send `Authorization: Bearer <access_token>`; the backend verifies it with `SUPABASE_JWT_SECRET` and upserts the user row before exchange integrations.
+
+## Deploy (Netlify)
+
+Production config lives in `netlify.toml` (build, functions, SPA redirects, asset caching). Step-by-step env vars and checks: **[docs/NETLIFY.md](docs/NETLIFY.md)**.
+
+Brief checklist:
+
+1. Connect the repo in Netlify; keep default build `npm run build` / publish `dist`.
+2. Set `OPENAI_API_KEY` (or `AI_API_KEY`) for serverless AI if you use those features.
+3. Set `VITE_SUPABASE_*` and, if applicable, `VITE_BACKEND_API_BASE` for your hosted API.
+4. Add **https://sigflo.group** (and `www` if used) to Supabase auth redirect allowlist, plus `http://localhost:3999` for local Netlify Dev.

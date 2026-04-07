@@ -1,5 +1,5 @@
-import { formatQuoteNumber } from '@/lib/formatQuote';
-import type { ExitStrategyPreset } from '@/types/aiExitAutomation';
+import { formatQuoteGuidance } from '@/lib/formatQuote';
+import type { ExitStrategyPreset, ExitStrategyThresholds } from '@/types/aiExitAutomation';
 
 export type ExitState = 'hold' | 'trim' | 'exit';
 
@@ -51,18 +51,95 @@ function trendMomentum01(trendAlignment: number, momentumQuality: number): numbe
   return (clamp(trendAlignment / 25, 0, 1) + clamp(momentumQuality / 20, 0, 1)) / 2;
 }
 
-function strategyThresholds(preset: ExitStrategyPreset | undefined) {
+/** Default weights for the `custom` exit strategy (editable in Exit AI when Custom is selected). */
+export const DEFAULT_CUSTOM_STRATEGY_THRESHOLDS: ExitStrategyThresholds = {
+  stopMain: 0.74,
+  stopMid: 0.48,
+  stopPnl: -0.8,
+  stopPnlSp: 0.38,
+  trimMain: 0.7,
+  trimMid: 0.42,
+  trimMom: 0.44,
+  trimLo: 0.36,
+  trimPnl: 0.4,
+};
+
+function clampTh(n: number, lo: number, hi: number, fallback: number): number {
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** Merge partial user values with defaults and safe bounds (used for persisted JSON). */
+export function sanitizeExitStrategyThresholds(
+  partial: Partial<ExitStrategyThresholds> | null | undefined,
+): ExitStrategyThresholds {
+  const d = DEFAULT_CUSTOM_STRATEGY_THRESHOLDS;
+  if (!partial) return { ...d };
+  return {
+    stopMain: clampTh(partial.stopMain ?? d.stopMain, 0.45, 0.95, d.stopMain),
+    stopMid: clampTh(partial.stopMid ?? d.stopMid, 0.2, 0.8, d.stopMid),
+    stopPnl: clampTh(partial.stopPnl ?? d.stopPnl, -1.5, -0.2, d.stopPnl),
+    stopPnlSp: clampTh(partial.stopPnlSp ?? d.stopPnlSp, 0.12, 0.6, d.stopPnlSp),
+    trimMain: clampTh(partial.trimMain ?? d.trimMain, 0.45, 0.95, d.trimMain),
+    trimMid: clampTh(partial.trimMid ?? d.trimMid, 0.2, 0.8, d.trimMid),
+    trimMom: clampTh(partial.trimMom ?? d.trimMom, 0.15, 0.7, d.trimMom),
+    trimLo: clampTh(partial.trimLo ?? d.trimLo, 0.15, 0.7, d.trimLo),
+    trimPnl: clampTh(partial.trimPnl ?? d.trimPnl, 0.1, 0.85, d.trimPnl),
+  };
+}
+
+function presetThresholdsNonCustom(preset: ExitStrategyPreset): ExitStrategyThresholds {
+  if (preset === 'protect_profit') {
+    return {
+      stopMain: 0.66,
+      stopMid: 0.42,
+      stopPnl: -0.65,
+      stopPnlSp: 0.34,
+      trimMain: 0.58,
+      trimMid: 0.36,
+      trimMom: 0.48,
+      trimLo: 0.3,
+      trimPnl: 0.28,
+    };
+  }
+  if (preset === 'trend_follow') {
+    return {
+      stopMain: 0.82,
+      stopMid: 0.54,
+      stopPnl: -0.95,
+      stopPnlSp: 0.42,
+      trimMain: 0.8,
+      trimMid: 0.5,
+      trimMom: 0.38,
+      trimLo: 0.42,
+      trimPnl: 0.52,
+    };
+  }
+  if (preset === 'tight_risk') {
+    return {
+      stopMain: 0.62,
+      stopMid: 0.4,
+      stopPnl: -0.55,
+      stopPnlSp: 0.32,
+      trimMain: 0.64,
+      trimMid: 0.38,
+      trimMom: 0.48,
+      trimLo: 0.34,
+      trimPnl: 0.35,
+    };
+  }
+  return { ...DEFAULT_CUSTOM_STRATEGY_THRESHOLDS };
+}
+
+export function resolveStrategyThresholds(
+  preset: ExitStrategyPreset | undefined,
+  customPartial: Partial<ExitStrategyThresholds> | null | undefined,
+): ExitStrategyThresholds {
   const p = preset ?? 'custom';
-  if (p === 'protect_profit') {
-    return { stopMain: 0.66, stopMid: 0.42, stopPnl: -0.65, stopPnlSp: 0.34, trimMain: 0.58, trimMid: 0.36, trimMom: 0.48, trimLo: 0.3, trimPnl: 0.28 };
+  if (p === 'custom') {
+    return sanitizeExitStrategyThresholds(customPartial);
   }
-  if (p === 'trend_follow') {
-    return { stopMain: 0.82, stopMid: 0.54, stopPnl: -0.95, stopPnlSp: 0.42, trimMain: 0.8, trimMid: 0.5, trimMom: 0.38, trimLo: 0.42, trimPnl: 0.52 };
-  }
-  if (p === 'tight_risk') {
-    return { stopMain: 0.62, stopMid: 0.4, stopPnl: -0.55, stopPnlSp: 0.32, trimMain: 0.64, trimMid: 0.38, trimMom: 0.48, trimLo: 0.34, trimPnl: 0.35 };
-  }
-  return { stopMain: 0.74, stopMid: 0.48, stopPnl: -0.8, stopPnlSp: 0.38, trimMain: 0.7, trimMid: 0.42, trimMom: 0.44, trimLo: 0.36, trimPnl: 0.4 };
+  return presetThresholdsNonCustom(p);
 }
 
 /**
@@ -80,6 +157,8 @@ export function computeExitGuidance(args: {
   pnlPct: number;
   /** Optional preset shifts how aggressively trim / exit triggers fire. */
   strategyPreset?: ExitStrategyPreset;
+  /** When `strategyPreset === 'custom'`, merges with defaults; ignored for named presets. */
+  customStrategyThresholds?: Partial<ExitStrategyThresholds> | null;
 }): ExitGuidance {
   const {
     side,
@@ -91,11 +170,12 @@ export function computeExitGuidance(args: {
     momentumQuality,
     pnlPct,
     strategyPreset,
+    customStrategyThresholds,
   } = args;
 
   const sp = stopPressure(side, entry, stop, lastPrice);
   const tp = targetProximity(side, entry, target, lastPrice);
-  const th = strategyThresholds(strategyPreset);
+  const th = resolveStrategyThresholds(strategyPreset, strategyPreset === 'custom' ? customStrategyThresholds : null);
   const tm = trendMomentum01(trendAlignment, momentumQuality);
 
   let state: ExitState;
@@ -151,11 +231,11 @@ export function computeExitGuidance(args: {
 
   let action: string;
   if (state === 'exit') {
-    action = `Cut or tighten — watch $${formatQuoteNumber(stop)}`;
+    action = `Cut or tighten — watch ~$${formatQuoteGuidance(stop)}`;
   } else if (state === 'trim') {
-    action = `Take profit near $${formatQuoteNumber(referencePrice)}`;
+    action = `Take profit near ~$${formatQuoteGuidance(referencePrice)}`;
   } else {
-    action = `Let it work toward $${formatQuoteNumber(target)}`;
+    action = `Let it work toward take-profit ~$${formatQuoteGuidance(target)}`;
   }
 
   return {

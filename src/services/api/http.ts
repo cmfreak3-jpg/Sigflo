@@ -13,10 +13,8 @@ function resolveApiBase(): string {
     }
     return base;
   }
-  if (import.meta.env.DEV) {
-    return '/api';
-  }
-  return 'http://localhost:8787/api';
+  /** Same-origin `/api` — Vite dev proxy, Netlify/Vercel rewrites, or reverse proxy to the Express backend. */
+  return '/api';
 }
 
 const API_BASE = resolveApiBase();

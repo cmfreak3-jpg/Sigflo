@@ -25,6 +25,26 @@ export async function fetchTradablePerpSymbols(): Promise<string[]> {
     .map((x) => x.symbol);
 }
 
+/** Max leverage allowed for the linear USDT contract (from instruments-info). Null if the request fails. */
+export async function fetchLinearMaxLeverage(symbol: string): Promise<number | null> {
+  const sym = symbol.trim().toUpperCase().replace(/\s+/g, '');
+  if (!sym) return null;
+  try {
+    const data = await getJson<
+      BybitResp<{
+        list?: Array<{ leverageFilter?: { maxLeverage?: string } }>;
+      }>
+    >(`/v5/market/instruments-info?category=linear&symbol=${encodeURIComponent(sym)}`);
+    if (data.retCode !== 0) return null;
+    const raw = data.result.list?.[0]?.leverageFilter?.maxLeverage;
+    const n = raw != null ? Number(String(raw).trim()) : NaN;
+    if (!Number.isFinite(n) || n < 1) return null;
+    return Math.max(1, Math.min(200, Math.floor(n)));
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> {
   const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>('/v5/market/tickers?category=linear');
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');

@@ -73,7 +73,16 @@ function seriesFromCandles(candles: Candle[]): number[] {
   return closes.map((v) => Math.max(0.08, Math.min(0.92, (v - min) / span)));
 }
 
-export function SignalCard({ signal, miniCandles }: { signal: CryptoSignal; miniCandles?: Candle[] }) {
+export function SignalCard({
+  signal,
+  miniCandles,
+  intervalLabel = '5m',
+}: {
+  signal: CryptoSignal;
+  miniCandles?: Candle[];
+  /** Matches trade chart timeframe (e.g. `15m`, `1h`). */
+  intervalLabel?: string;
+}) {
   const navigate = useNavigate();
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -155,7 +164,7 @@ export function SignalCard({ signal, miniCandles }: { signal: CryptoSignal; mini
           <div className="flex shrink-0 flex-col gap-1">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold tracking-tight text-white">{signal.pair}/USDT</h2>
-              <span className="text-[11px] text-sigflo-muted">5m</span>
+              <span className="text-[11px] text-sigflo-muted">{intervalLabel}</span>
             </div>
             <span
               className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${sideChipClass}`}

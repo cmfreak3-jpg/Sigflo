@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { MarketDeepAnalysisSheet } from '@/components/trade/MarketDeepAnalysisSheet';
+import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { requestAssistantSuggestion } from '@/services/ai/client';
+import { spotBaseAssetFromOrderSymbol } from '@/lib/spotSymbol';
 import { tradeTimingChipProps } from '@/lib/tradeTimingChip';
+import type { AiStructuredAnalysis, GroundedMarketContext } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
 
@@ -51,7 +55,11 @@ function watchFor(signal: CryptoSignal): string {
 }
 
 function actionFor(signal: CryptoSignal, status: MarketRowStatus, tradeScore: number): string {
-  if (signal.riskTag === 'High Risk' || tradeScore < 45) return 'High risk — reduce size';
+  const highSetupRisk = signal.riskTag === 'High Risk';
+  const weakTiming = tradeScore < 45;
+  if (highSetupRisk && weakTiming) return 'High setup risk and weak entry timing — reduce size';
+  if (highSetupRisk) return 'High setup risk — reduce size';
+  if (weakTiming) return 'Weak entry timing — reduce size';
   if (status === 'overextended') return 'Avoid chasing';
   if (status === 'developing') return 'Wait for confirmation';
   if (status === 'triggered' && tradeScore >= 65) return 'Entry active';
@@ -84,14 +92,29 @@ export function ScannerInsightCard({
   signal,
   status,
   tradeScore,
+  groundedContext,
 }: {
   signal: CryptoSignal;
   status: MarketRowStatus;
   tradeScore: number;
+  groundedContext: GroundedMarketContext;
 }) {
-  const [aiResult, setAiResult] = useState<{ headline: string; body: string; source: 'local' | 'remote' } | null>(null);
+  const [aiResult, setAiResult] = useState<{
+    headline: string;
+    body: string;
+    source: 'local' | 'remote';
+    structured?: AiStructuredAnalysis;
+  } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [readOpen, setReadOpen] = useState(false);
+  const [deepSheetOpen, setDeepSheetOpen] = useState(false);
+  const [newsScanOpen, setNewsScanOpen] = useState(false);
+  const baseAsset = useMemo(() => spotBaseAssetFromOrderSymbol(signal.pair), [signal.pair]);
+
+  useEffect(() => {
+    setDeepSheetOpen(false);
+    setNewsScanOpen(false);
+  }, [signal.id]);
   const bullets = useMemo(() => previewBullets(signal, status), [signal, status]);
   const timingChip = tradeTimingChipProps(status, tradeScore);
   const action = actionFor(signal, status, tradeScore);
@@ -102,22 +125,55 @@ export function ScannerInsightCard({
 
   const runExplain = async () => {
     setAiLoading(true);
-    const result = await requestAssistantSuggestion({ action: 'explain', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body, source: result.source });
+    const result = await requestAssistantSuggestion({
+      action: 'explain',
+      signal,
+      status,
+      tradeScore,
+      context: groundedContext,
+    });
+    setAiResult({
+      headline: result.headline,
+      body: result.body,
+      source: result.source,
+      structured: result.structured,
+    });
     setAiLoading(false);
   };
 
   const runWatch = async () => {
     setAiLoading(true);
-    const result = await requestAssistantSuggestion({ action: 'watch', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body, source: result.source });
+    const result = await requestAssistantSuggestion({
+      action: 'watch',
+      signal,
+      status,
+      tradeScore,
+      context: groundedContext,
+    });
+    setAiResult({
+      headline: result.headline,
+      body: result.body,
+      source: result.source,
+      structured: result.structured,
+    });
     setAiLoading(false);
   };
 
   const runEntry = async () => {
     setAiLoading(true);
-    const result = await requestAssistantSuggestion({ action: 'entry', signal, status, tradeScore });
-    setAiResult({ headline: result.headline, body: result.body, source: result.source });
+    const result = await requestAssistantSuggestion({
+      action: 'entry',
+      signal,
+      status,
+      tradeScore,
+      context: groundedContext,
+    });
+    setAiResult({
+      headline: result.headline,
+      body: result.body,
+      source: result.source,
+      structured: result.structured,
+    });
     setAiLoading(false);
   };
 
@@ -137,6 +193,9 @@ export function ScannerInsightCard({
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/90">AI Scanner</p>
         </div>
       </div>
+      <p className="mt-1.5 text-[9px] leading-snug text-sigflo-muted/90">
+        Interprets the Sigflo signal engine and on-screen plan data only — not independent research.
+      </p>
 
       <ul className="mt-2.5 list-none space-y-1.5">
         {bullets.map((line, i) => (
@@ -186,6 +245,25 @@ export function ScannerInsightCard({
       <p className="mt-1.5 text-[11px] font-semibold leading-snug text-emerald-300/95">{action}</p>
 
       <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/20 p-2">
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted">Quick read</span>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setNewsScanOpen(true)}
+              className="rounded-md border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-sigflo-text/95 transition hover:bg-white/[0.09]"
+            >
+              {baseAsset} news
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeepSheetOpen(true)}
+              className="rounded-md border border-cyan-400/20 bg-cyan-500/[0.08] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-cyan-100/95 transition hover:bg-cyan-500/14"
+            >
+              Full thesis
+            </button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -229,11 +307,48 @@ export function ScannerInsightCard({
               </span>
             </div>
             <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-sigflo-muted">{aiResult.body}</p>
+            {aiResult.structured ? (
+              <div className="mt-2 space-y-1 rounded border border-white/[0.05] bg-black/20 px-2 py-1.5 text-[9px] text-sigflo-muted">
+                <p className="font-bold uppercase tracking-[0.12em] text-cyan-200/70">Grounded summary</p>
+                <p>
+                  Bias <span className="font-semibold text-white/90">{aiResult.structured.bias}</span> · Confidence{' '}
+                  <span className="font-mono tabular-nums text-white/85">{aiResult.structured.confidence}</span> · Valid{' '}
+                  <span className="text-white/85">{aiResult.structured.trade_valid ? 'yes' : 'no'}</span>
+                </p>
+                {aiResult.structured.levels_used.length > 0 ? (
+                  <p className="font-mono text-[8px] text-white/70">
+                    Levels used:{' '}
+                    {aiResult.structured.levels_used
+                      .map((n) => n.toLocaleString('en-US', { maximumFractionDigits: 8 }))
+                      .join(', ')}
+                  </p>
+                ) : (
+                  <p className="text-[8px] text-sigflo-muted/90">Levels used: none (package-only)</p>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="mt-2 text-[10px] text-sigflo-muted">Assistant is ready for this setup.</p>
         )}
       </div>
+
+      <MarketDeepAnalysisSheet
+        open={deepSheetOpen}
+        onClose={() => setDeepSheetOpen(false)}
+        signal={signal}
+        status={status}
+        tradeScore={tradeScore}
+        groundedContext={groundedContext}
+        quickRead={aiResult ? { headline: aiResult.headline, body: aiResult.body } : null}
+      />
+
+      <MarketNewsScanSheet
+        open={newsScanOpen}
+        onClose={() => setNewsScanOpen(false)}
+        focusAsset={baseAsset}
+        marketRegime={groundedContext.marketRegime}
+      />
     </div>
   );
 }

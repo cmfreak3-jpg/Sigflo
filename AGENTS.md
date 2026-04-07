@@ -13,6 +13,7 @@ Sigflo is a React + TypeScript + Vite SPA for crypto trading signals. Core marke
 | Vite Dev Server | `npm run dev:vite` | `http://localhost:5173` | **Yes** |
 | Express Backend | `npm run dev:backend` | `http://127.0.0.1:8787` | No (exchange integrations only) |
 | Netlify Dev | `npm run dev` (needs `netlify-cli`) | `http://localhost:3999` | No (wraps Vite + serverless functions) |
+| Netlify production | Git-linked site; build `npm run build`, publish `dist` | **https://sigflo.group** | Hosting + `/api/ai/*` functions; see `docs/NETLIFY.md` |
 
 ### Key commands
 
@@ -28,7 +29,7 @@ See `package.json` scripts:
 
 - **ESLint config missing:** The repo declares ESLint 9 as a dev dependency but does not include an `eslint.config.js` (required by ESLint v9). Running `npm run lint` will fail until this config is added.
 - **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
-- The app uses `import.meta.env.DEV` (built-in Vite flag) only — no custom `.env` files are needed.
+- Optional env vars are documented in `.env.example` (`VITE_SUPABASE_*`, `VITE_BACKEND_API_BASE`, `VITE_USE_MOCK_TRADE_DATA`, etc.). Production trade levels use the live market feed unless `VITE_USE_MOCK_TRADE_DATA=true`.
 - **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: 'all'` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
 - **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. It falls back to mock data gracefully — this is expected behavior.
 

@@ -3,7 +3,12 @@ import {
   nextPlannedAutomationLine,
 } from '@/lib/aiExitAutomation';
 import { computeExitGuidance, type ExitGuidance } from '@/lib/exitGuidance';
-import type { AutomationSafeguards, ExitAiMode, ExitStrategyPreset } from '@/types/aiExitAutomation';
+import type {
+  AutomationSafeguards,
+  ExitAiMode,
+  ExitStrategyPreset,
+  ExitStrategyThresholds,
+} from '@/types/aiExitAutomation';
 import type { TradeSide } from '@/types/trade';
 
 export type ResolveExitGuidanceInput =
@@ -17,6 +22,8 @@ export type ResolveExitGuidanceInput =
       trendAlignment: number;
       momentumQuality: number;
       strategyPreset: ExitStrategyPreset;
+      /** Used when `strategyPreset === 'custom'`. */
+      customStrategyThresholds?: Partial<ExitStrategyThresholds> | null;
       safeguards: AutomationSafeguards;
       exitAiMode: ExitAiMode;
     }
@@ -31,6 +38,7 @@ export type ResolveExitGuidanceInput =
       momentumQuality: number;
       pnlPct: number;
       strategyPreset: ExitStrategyPreset;
+      customStrategyThresholds?: Partial<ExitStrategyThresholds> | null;
       safeguards: AutomationSafeguards;
       exitAiMode: ExitAiMode;
     };
@@ -68,6 +76,7 @@ export function resolveExitGuidanceFlow(input: ResolveExitGuidanceInput): Resolv
     momentumQuality: input.momentumQuality,
     pnlPct,
     strategyPreset: input.strategyPreset,
+    customStrategyThresholds: input.customStrategyThresholds,
   });
 
   const effective = applySafeguardsToGuidance(

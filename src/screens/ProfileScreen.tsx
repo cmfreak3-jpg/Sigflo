@@ -5,7 +5,8 @@ import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
-import type { ExchangeId } from '@/types/integrations';
+import { formatFundingBalance } from '@/lib/formatFundingBalance';
+import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
 
@@ -32,6 +33,7 @@ export default function ProfileScreen() {
   const [securityMessage, setSecurityMessage] = useState<string | null>(null);
   const [mfaEnabled, setMfaEnabled] = useState<boolean>(false);
   const [mfaStatusLoading, setMfaStatusLoading] = useState<boolean>(false);
+  const [googleSignInError, setGoogleSignInError] = useState<string | null>(null);
   const [totpCopyFlash, setTotpCopyFlash] = useState(false);
   const [totpSetup, setTotpSetup] = useState<{
     factorId: string;
@@ -42,7 +44,8 @@ export default function ProfileScreen() {
     code: string;
   } | null>(null);
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect } = useExchangeIntegrations();
-  const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } = useAccountSnapshot();
+  const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
+    useAccountSnapshot({ pollMs: 12_000 });
   const { signals, connection: signalConnection } = useSignalEngine();
   const { statusMap } = useBotStatuses();
 
@@ -319,13 +322,23 @@ export default function ProfileScreen() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {authMode === 'supabase' && !authLoading && !user ? (
-            <button
-              type="button"
-              onClick={() => void signInWithGoogle()}
-              className="rounded-lg border border-white/[0.1] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.1]"
-            >
-              Continue with Google
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleSignInError(null);
+                  void signInWithGoogle().catch((e: unknown) => {
+                    setGoogleSignInError(e instanceof Error ? e.message : 'Google sign-in failed');
+                  });
+                }}
+                className="rounded-lg border border-white/[0.1] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.1]"
+              >
+                Continue with Google
+              </button>
+              {googleSignInError ? (
+                <p className="max-w-[14rem] text-right text-[10px] leading-snug text-rose-300/95">{googleSignInError}</p>
+              ) : null}
+            </div>
           ) : null}
           {authMode === 'supabase' && user ? (
             <button
@@ -343,22 +356,89 @@ export default function ProfileScreen() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Your Stats</p>
-        <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Signals</p>
-            <p className="mt-1 text-base font-bold text-white">{signalCount.toLocaleString()}</p>
-          </div>
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Win rate</p>
-            <p className="mt-1 text-base font-bold text-emerald-300">{winRate}</p>
-          </div>
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Avg R:R</p>
-            <p className="mt-1 text-base font-bold text-white">{avgRr}</p>
-          </div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Exchange Connections</p>
+        {authMode === 'supabase' && !user && !authLoading ? (
+          <p className="mt-2 text-[11px] text-amber-200/90">Sign in with Google to connect Bybit or MEXC.</p>
+        ) : null}
+        <div className="mt-2 space-y-2">
+          {(['bybit', 'mexc'] as ExchangeId[]).map((exchange) => {
+            const integration = integrations.find((i) => i.exchange === exchange);
+            const snapshot = snapshots.find((s) => s.exchange === exchange);
+            const connected = Boolean(integration);
+            return (
+              <div
+                key={exchange}
+                className={`rounded-xl border p-2.5 transition ${
+                  connected
+                    ? 'border-sigflo-accent/30 bg-gradient-to-b from-sigflo-accent/[0.08] to-black/25 shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
+                    : 'border-white/[0.06] bg-black/20'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
+                    <p className={`text-[11px] font-medium ${connected ? 'text-emerald-300' : 'text-sigflo-muted'}`}>
+                      {connected ? 'Connected' : 'Not connected'}
+                    </p>
+                    <p className="text-[11px] text-sigflo-muted">
+                      {connected
+                        ? `Last synced: ${
+                            integration?.lastValidatedAt
+                              ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                              : 'just now'
+                          }`
+                        : 'Link API keys — withdrawals must be off'}
+                    </p>
+                  </div>
+                  {connected ? (
+                    <button
+                      type="button"
+                      onClick={() => setDisconnectTarget(exchange)}
+                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
+                    >
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!canUseExchangeApi}
+                      onClick={() => {
+                        setConnectError(null);
+                        setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                      }}
+                      className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+                {snapshot ? <ExchangeBalanceBreakdown snapshot={snapshot} /> : null}
+              </div>
+            );
+          })}
         </div>
-        <p className="mt-2 text-[11px] text-sigflo-muted">Based on your trading activity</p>
+        {integrationsLoading || snapshotLoading ? <p className="mt-2 text-[11px] text-sigflo-muted">Syncing integrations...</p> : null}
+        {syncIssue ? (
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2">
+            <p className="text-[11px] text-amber-100">Last sync failed: {syncIssue}</p>
+            <button
+              type="button"
+              disabled={syncBusy}
+              onClick={async () => {
+                setSyncBusy(true);
+                try {
+                  await Promise.all([refreshIntegrations(), refreshSnapshots()]);
+                } finally {
+                  setSyncBusy(false);
+                }
+              }}
+              className="shrink-0 rounded-lg border border-amber-200/35 bg-amber-200/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100 transition hover:bg-amber-200/15 disabled:opacity-50"
+            >
+              {syncBusy ? 'Retrying...' : 'Retry'}
+            </button>
+          </div>
+        ) : null}
+        {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
@@ -395,100 +475,22 @@ export default function ProfileScreen() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Exchange Connections</p>
-        {authMode === 'supabase' && !user && !authLoading ? (
-          <p className="mt-2 text-[11px] text-amber-200/90">Sign in with Google to connect Bybit or MEXC.</p>
-        ) : null}
-        <div className="mt-2 space-y-2">
-          {(['bybit', 'mexc'] as ExchangeId[]).map((exchange) => {
-            const integration = integrations.find((i) => i.exchange === exchange);
-            const snapshot = snapshots.find((s) => s.exchange === exchange);
-            const connected = Boolean(integration);
-            return (
-              <div
-                key={exchange}
-                className={`rounded-xl border p-2.5 transition ${
-                  connected
-                    ? 'border-sigflo-accent/30 bg-gradient-to-b from-sigflo-accent/[0.08] to-black/25 shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
-                    : 'border-white/[0.06] bg-black/20'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
-                    <p className={`text-[11px] font-medium ${connected ? 'text-emerald-300' : 'text-sigflo-muted'}`}>
-                      {connected ? 'Connected' : 'Not connected'}
-                    </p>
-                    <p className="text-[11px] text-sigflo-muted">
-                      {connected
-                        ? `Last synced: ${
-                            integration?.lastValidatedAt
-                              ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                              : 'just now'
-                          }`
-                        : 'Link read-only API access'}
-                    </p>
-                  </div>
-                  {connected ? (
-                    <button
-                      type="button"
-                      onClick={() => setDisconnectTarget(exchange)}
-                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
-                    >
-                      Disconnect
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!canUseExchangeApi}
-                      onClick={() => {
-                        setConnectError(null);
-                        setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
-                      }}
-                      className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Connect
-                    </button>
-                  )}
-                </div>
-                {snapshot ? (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balances</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
-                    </div>
-                    <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        {integrationsLoading || snapshotLoading ? <p className="mt-2 text-[11px] text-sigflo-muted">Syncing integrations...</p> : null}
-        {syncIssue ? (
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2">
-            <p className="text-[11px] text-amber-100">Last sync failed: {syncIssue}</p>
-            <button
-              type="button"
-              disabled={syncBusy}
-              onClick={async () => {
-                setSyncBusy(true);
-                try {
-                  await Promise.all([refreshIntegrations(), refreshSnapshots()]);
-                } finally {
-                  setSyncBusy(false);
-                }
-              }}
-              className="shrink-0 rounded-lg border border-amber-200/35 bg-amber-200/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100 transition hover:bg-amber-200/15 disabled:opacity-50"
-            >
-              {syncBusy ? 'Retrying...' : 'Retry'}
-            </button>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Your Stats</p>
+        <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Signals</p>
+            <p className="mt-1 text-base font-bold text-white">{signalCount.toLocaleString()}</p>
           </div>
-        ) : null}
-        {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Win rate</p>
+            <p className="mt-1 text-base font-bold text-emerald-300">{winRate}</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Avg R:R</p>
+            <p className="mt-1 text-base font-bold text-white">{avgRr}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-sigflo-muted">Based on your trading activity</p>
       </section>
 
       {exchangeForm ? (
@@ -761,6 +763,103 @@ function ToggleRow({
         {value ? 'On' : 'Off'}
       </span>
     </button>
+  );
+}
+
+function fmtUsdMaybe(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function BalanceMetricCell({ label, value }: { label: string; value: number | null | undefined }) {
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-black/25 p-2">
+      <p className="text-[9px] uppercase tracking-[0.12em] text-sigflo-muted">{label}</p>
+      <p className="mt-1 text-xs font-semibold tabular-nums text-white">{fmtUsdMaybe(value)}</p>
+    </div>
+  );
+}
+
+function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) {
+  const breakdown = snapshot.accountBreakdown ?? null;
+
+  if (!breakdown) {
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balances</p>
+          <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
+        </div>
+        <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
+          <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2.5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        <BalanceMetricCell label="Total Equity" value={breakdown.overview.totalEquity} />
+        <BalanceMetricCell label="Wallet Balance" value={breakdown.overview.totalWalletBalance} />
+        <BalanceMetricCell label="Available to Trade" value={breakdown.overview.availableToTrade} />
+        <div className="rounded-lg border border-white/[0.06] bg-black/25 p-2">
+          <p className="text-[9px] uppercase tracking-[0.12em] text-sigflo-muted">Funding Balance</p>
+          <p className="mt-1 text-xs font-semibold tabular-nums text-white">
+            {formatFundingBalance(
+              breakdown.overview.fundingWalletBalance ?? NaN,
+              breakdown.overview.fundingPrimaryAsset,
+            )}
+          </p>
+          <p className="mt-0.5 text-[8px] leading-tight text-sigflo-muted/85" title="Funding = deposit / transfer wallet">
+            Funding = deposit / transfer wallet
+          </p>
+        </div>
+      </div>
+
+      {breakdown.buckets.map((bucket) => {
+        const usdt = bucket.assets.find((a) => a.asset === 'USDT');
+        return (
+          <div key={bucket.kind} className="rounded-lg border border-white/[0.06] bg-black/25 p-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/95">{bucket.label}</p>
+                <p className="mt-0.5 text-[10px] text-sigflo-muted">{bucket.helperText}</p>
+              </div>
+              {usdt ? (
+                <span className="rounded border border-cyan-400/25 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-100/95">
+                  USDT {fmtUsdMaybe(usdt.total)}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <BalanceMetricCell label="Available Balance" value={bucket.metrics.availableBalance} />
+              <BalanceMetricCell label="Wallet Balance" value={bucket.metrics.walletBalance} />
+              <BalanceMetricCell label="Equity" value={bucket.metrics.equity} />
+              <BalanceMetricCell label="Margin Balance" value={bucket.metrics.marginBalance} />
+              <BalanceMetricCell label="Margin Used" value={bucket.metrics.marginUsed} />
+              <BalanceMetricCell label="Unrealized PnL" value={bucket.metrics.unrealizedPnl} />
+            </div>
+            {bucket.kind === 'funding' && bucket.assets.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {bucket.assets.slice(0, 8).map((a) => (
+                  <span
+                    key={a.asset}
+                    className="rounded border border-white/[0.08] bg-black/30 px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-sigflo-text/95"
+                    title={`${a.asset} — wallet total`}
+                  >
+                    {a.asset}{' '}
+                    <span className="text-white/90">{fmtUsdMaybe(a.total)}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

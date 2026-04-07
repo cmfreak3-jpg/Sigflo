@@ -1,10 +1,33 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Merge keys missing from `into` (e.g. OPENAI_API_KEY only in `backend/.env`). */
+function mergeDotenvFile(filePath: string, into: Record<string, string>) {
+  if (!existsSync(filePath)) return;
+  try {
+    const text = readFileSync(filePath, 'utf8');
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key && into[key] === undefined) into[key] = val;
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -16,12 +39,21 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 export default defineConfig(({ mode }) => {
-  const envFromFiles = loadEnv(mode, __dirname, '');
+  const envFromFiles = { ...loadEnv(mode, __dirname, '') };
+  mergeDotenvFile(path.join(__dirname, 'backend', '.env'), envFromFiles);
   const devAiEnv = (): NodeJS.ProcessEnv => ({ ...process.env, ...envFromFiles });
 
+  const baseFromEnv = envFromFiles.VITE_BASE?.trim();
+  const resolvedBase =
+    baseFromEnv && baseFromEnv !== '/'
+      ? baseFromEnv.endsWith('/')
+        ? baseFromEnv
+        : `${baseFromEnv}/`
+      : '/';
+
   return {
-    /** Production build for https://liminl.net/sigflo/ (SiteGround). Local dev stays at `/`. */
-    base: mode === 'production' ? '/sigflo/' : '/',
+    /** Set `VITE_BASE=/your/subpath/` when hosting under a subfolder (avoids blank screen from 404 JS/CSS). */
+    base: resolvedBase,
     plugins: [
       {
         name: 'ai-suggest-dev',
@@ -29,7 +61,7 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
             const pathname = req.url?.split('?')[0] ?? '';
-            if (pathname !== '/api/ai/suggest') {
+            if (pathname !== '/api/ai/suggest' && pathname !== '/api/ai/news-scan') {
               next();
               return;
             }
@@ -48,8 +80,22 @@ export default defineConfig(({ mode }) => {
             }
 
             try {
-              const { runAiSuggest } = await import('./netlify/functions/lib/ai-suggest-core.mjs');
               const body = await readBody(req as IncomingMessage);
+              if (pathname === '/api/ai/news-scan') {
+                // Netlify ESM helper — no .d.ts; keep dev parity with production function.
+                const { runMarketNewsScan } = (await import(
+                  // @ts-expect-error TS7016 — untyped .mjs Netlify module
+                  './netlify/functions/lib/market-news-scan-core.mjs'
+                )) as {
+                  runMarketNewsScan: (rawBody: string, env: NodeJS.ProcessEnv) => Promise<unknown>;
+                };
+                const result = await runMarketNewsScan(body, devAiEnv());
+                out.setHeader('Content-Type', 'application/json');
+                out.statusCode = 200;
+                out.end(JSON.stringify(result));
+                return;
+              }
+              const { runAiSuggest } = await import('./netlify/functions/lib/ai-suggest-core.mjs');
               const result = await runAiSuggest(body, devAiEnv());
               out.setHeader('Content-Type', 'application/json');
               if ('error' in result) {
@@ -62,7 +108,7 @@ export default defineConfig(({ mode }) => {
             } catch {
               out.statusCode = 500;
               out.setHeader('Content-Type', 'application/json');
-              out.end(JSON.stringify({ error: 'AI suggest handler failed' }));
+              out.end(JSON.stringify({ error: 'AI handler failed' }));
             }
           });
         },
@@ -80,6 +126,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api/integrations': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         '/api/portfolio': { target: 'http://127.0.0.1:8787', changeOrigin: true },
+        '/api/trade': { target: 'http://127.0.0.1:8787', changeOrigin: true },
       },
     },
   };

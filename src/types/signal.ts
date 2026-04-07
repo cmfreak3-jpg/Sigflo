@@ -39,4 +39,11 @@ export interface CryptoSignal {
   watchCue?: string;
   /** Optional forward cue (“what happens next”); otherwise derived in `resolveWatchNextCue`. */
   watchNext?: string;
+  /**
+   * When provided by API or deep-link, used as the trade plan (entry / SL / TP).
+   * Otherwise `buildTradeViewModelFromSignal` derives levels from the live anchor price.
+   */
+  plannedEntry?: number;
+  plannedStop?: number;
+  plannedTarget?: number;
 }

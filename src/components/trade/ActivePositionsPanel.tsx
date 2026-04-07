@@ -1,11 +1,22 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivePositionCard } from '@/components/trade/ActivePositionCard';
+import { syntheticFromExchangePosition } from '@/lib/exchangePositionSynthetic';
 import type { SimulatedActivePosition } from '@/types/activePosition';
+import type { PositionItem } from '@/types/integrations';
+import type { MarketMode } from '@/types/trade';
 
 type ActivePositionsPanelProps = {
-  positions: SimulatedActivePosition[];
+  executionMode: 'paper' | 'exchange';
+  market: MarketMode;
+  paperPositions: SimulatedActivePosition[];
+  exchangePosition: PositionItem | null;
+  /** Spot holding derived from wallet balance (no linear `position/list` row). */
+  exchangeSpotDisplay: SimulatedActivePosition | null;
+  /** Chart / header pair label (may differ from `BTCUSDT`). */
+  displayPair: string;
+  leverageFallback: number;
   markPrice: number;
-  nowMs: number;
   onRequestCloseAllModal: () => void;
   exitAiModeLabel: string;
   exitStrategyLabel: string;
@@ -13,15 +24,44 @@ type ActivePositionsPanelProps = {
 };
 
 export function ActivePositionsPanel({
-  positions,
+  executionMode,
+  market,
+  paperPositions,
+  exchangePosition,
+  exchangeSpotDisplay,
+  displayPair,
+  leverageFallback,
   markPrice,
-  nowMs,
   onRequestCloseAllModal,
   exitAiModeLabel,
   exitStrategyLabel,
   scenarioSummary,
 }: ActivePositionsPanelProps) {
-  if (positions.length === 0) return null;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const exchangeCardModel = useMemo(() => {
+    if (!exchangePosition) return null;
+    return syntheticFromExchangePosition(exchangePosition, displayPair, market, leverageFallback);
+  }, [displayPair, exchangePosition, leverageFallback, market]);
+
+  const showExchangeFutures =
+    executionMode === 'exchange' && market === 'futures' && exchangePosition != null && exchangeCardModel != null;
+  const showExchangeSpot = executionMode === 'exchange' && market === 'spot' && exchangeSpotDisplay != null;
+  const showExchange = showExchangeFutures || showExchangeSpot;
+  const showPaper = executionMode === 'paper' && paperPositions.length > 0;
+
+  if (!showExchange && !showPaper) return null;
+
+  const header =
+    executionMode === 'exchange'
+      ? market === 'spot'
+        ? 'Bybit spot'
+        : 'Bybit position'
+      : `Practice position${paperPositions.length > 1 ? ` · ${paperPositions.length}` : ''}`;
 
   return (
     <AnimatePresence mode="popLayout">
@@ -38,11 +78,11 @@ export function ActivePositionsPanel({
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-0.5">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3] sm:text-[10px]">
-                Live trade{positions.length > 1 ? ` · ${positions.length}` : ''}
+                {header}
               </span>
-              {positions.length > 1 ? (
+              {executionMode === 'paper' && paperPositions.length > 1 ? (
                 <span className="shrink-0 rounded bg-white/[0.06] px-1 py-px font-mono text-[9px] font-bold tabular-nums text-white/75">
-                  {positions.length}
+                  {paperPositions.length}
                 </span>
               ) : null}
             </div>
@@ -57,9 +97,9 @@ export function ActivePositionsPanel({
 
           <div className="flex flex-col gap-1.5">
             <AnimatePresence initial={false}>
-              {positions.map((p) => (
+              {showExchangeFutures && exchangeCardModel && exchangePosition ? (
                 <motion.div
-                  key={p.id}
+                  key={`ex-${exchangePosition.symbol}`}
                   layout
                   initial={{ opacity: 0, y: 12, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -67,20 +107,68 @@ export function ActivePositionsPanel({
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                 >
                   <ActivePositionCard
-                    position={p}
+                    position={exchangeCardModel}
                     markPrice={markPrice}
                     nowMs={nowMs}
                     exitAiModeLabel={exitAiModeLabel}
                     exitStrategyLabel={exitStrategyLabel}
                     scenarioSummary={scenarioSummary}
+                    executionSource="exchange"
+                    exchangeUnrealizedUsd={exchangePosition.unrealizedPnl}
                   />
                 </motion.div>
-              ))}
+              ) : null}
+              {showExchangeSpot && exchangeSpotDisplay ? (
+                <motion.div
+                  key={exchangeSpotDisplay.id}
+                  layout
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -12, scale: 0.98, transition: { duration: 0.2 } }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                >
+                  <ActivePositionCard
+                    position={exchangeSpotDisplay}
+                    markPrice={markPrice}
+                    nowMs={nowMs}
+                    exitAiModeLabel={exitAiModeLabel}
+                    exitStrategyLabel={exitStrategyLabel}
+                    scenarioSummary={scenarioSummary}
+                    executionSource="exchange"
+                  />
+                </motion.div>
+              ) : null}
+              {showPaper
+                ? paperPositions.map((p) => (
+                    <motion.div
+                      key={p.id}
+                      layout
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -12, scale: 0.98, transition: { duration: 0.2 } }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                    >
+                      <ActivePositionCard
+                        position={p}
+                        markPrice={markPrice}
+                        nowMs={nowMs}
+                        exitAiModeLabel={exitAiModeLabel}
+                        exitStrategyLabel={exitStrategyLabel}
+                        scenarioSummary={scenarioSummary}
+                        executionSource="paper"
+                      />
+                    </motion.div>
+                  ))
+                : null}
             </AnimatePresence>
           </div>
 
           <p className="px-0.5 text-center text-[8px] leading-snug text-sigflo-muted/85">
-            Manage exits from the chart dock below — demo only; confirm on exchange.
+            {executionMode === 'exchange'
+              ? market === 'spot'
+                ? 'Synced from your Bybit wallet — Close / Partial send market sells (base qty).'
+                : 'Synced from your Bybit account — use Close to send reduce-only orders.'
+              : 'Not a Bybit position — PnL here is simulated. Connect Bybit to trade perps or spot for real.'}
           </p>
         </div>
       </motion.div>

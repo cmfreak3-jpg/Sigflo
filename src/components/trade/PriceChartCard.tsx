@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import {
   CandlestickSeries,
@@ -19,7 +19,11 @@ import { SetupToggle } from '@/components/trade/SetupToggle';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { hexToRgba } from '@/lib/chartColorUtils';
-import { tradeTimingOverlayVisual, type TradeTimingChipState } from '@/lib/tradeTimingChip';
+import {
+  tradeTimingLineAlpha,
+  tradeTimingOverlayVisual,
+  type TradeTimingChipState,
+} from '@/lib/tradeTimingChip';
 import { formatQuoteNumber, formatQuoteUsd } from '@/lib/formatQuote';
 import {
   TRADE_CHART_LEVEL_COLORS,
@@ -33,10 +37,9 @@ import type { MarketMode, TradeViewModel } from '@/types/trade';
  * Chart surface: Lightweight Charts plot, interval chips, `SetupToggle` (Clean vs Setup overlays).
  * Overlay series use ease-out fade in `SETUP_LINE_ANIM_MS`; line weight/opacity from `tradeTimingOverlayVisual`.
  */
-type LevelKey = 'last' | 'entry' | 'stop' | 'target' | 'liquidation';
+type LevelKey = 'entry' | 'stop' | 'target' | 'liquidation';
 
 const levelStyles: Record<LevelKey, { label: string; stroke: string; labelClass: string }> = {
-  last: { label: 'Last', stroke: TRADE_CHART_LEVEL_COLORS.last, labelClass: 'text-cyan-300' },
   entry: { label: 'Entry', stroke: TRADE_CHART_LEVEL_COLORS.entry, labelClass: 'text-teal-300' },
   stop: { label: 'Stop', stroke: TRADE_CHART_LEVEL_COLORS.stop, labelClass: 'text-rose-300' },
   target: { label: 'Target', stroke: TRADE_CHART_LEVEL_COLORS.target, labelClass: 'text-emerald-300' },
@@ -49,6 +52,19 @@ const levelStyles: Record<LevelKey, { label: string; stroke: string; labelClass:
 
 /** Ease-out fade for setup overlays (entry / stop / target / liq). */
 const SETUP_LINE_ANIM_MS = 175;
+
+/**
+ * Stop and liquidation are often far below/above the live last/entry/target band. Including them
+ * in y-autoscale squashes candles. We anchor the band on last + entry + target (+ aux), then only
+ * widen to include stop/liq when within this ratio of that band's span (from the nearest edge).
+ */
+const SETUP_RISK_OUTSIDE_PRIMARY_RATIO = 0.28;
+
+function padPriceExtent(min: number, max: number): { min: number; max: number } {
+  const span = max - min;
+  const pad = span > 0 ? span * 0.03 : Math.max(min, max) * 0.002;
+  return { min: min - pad, max: max + pad };
+}
 
 function toUtcTime(tsMs: number): UTCTimestamp {
   return Math.floor(tsMs / 1000) as UTCTimestamp;
@@ -140,6 +156,8 @@ export function PriceChartCard({
    * already shows them). Left column becomes “Price chart” + `liveHeaderMetrics` instead.
    */
   suppressExchangeHeroLivePrice = false,
+  /** Strip label when `liveTradeMode` (e.g. practice vs exchange-backed). */
+  liveActivePositionTitle = 'Practice position',
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -175,11 +193,14 @@ export function PriceChartCard({
     badge?: string;
     /** Shown under R/T/R:R when `suppressExchangeHeroLivePrice` (e.g. uPnL — not duplicate last). */
     secondaryLine?: string;
+    /** uPnL coloring: green / red / muted when flat. */
+    secondaryLineTone?: 'positive' | 'negative' | 'neutral';
   };
   liveTradeRefitKey?: string;
   chartProximity?: 'stop' | 'target' | null;
   liveTradeOverlayPreset?: boolean;
   suppressExchangeHeroLivePrice?: boolean;
+  liveActivePositionTitle?: string;
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
@@ -212,7 +233,6 @@ export function PriceChartCard({
   /** Which series owns `priceLineByKeyRef` — must match candle vs line fallback in data effect. */
   const priceLineHostModeRef = useRef<'candle' | 'line' | null>(null);
   const [visibleLevels, setVisibleLevels] = useState<Record<LevelKey, boolean>>({
-    last: false,
     entry: false,
     stop: false,
     target: false,
@@ -248,7 +268,6 @@ export function PriceChartCard({
     if (solo != null) {
       setSoloOverlayFromClean(null);
       setVisibleLevels({
-        last: solo === 'last',
         entry: solo === 'entry',
         stop: solo === 'stop',
         target: solo === 'target',
@@ -266,7 +285,6 @@ export function PriceChartCard({
     }
 
     setVisibleLevels({
-      last: true,
       entry: true,
       stop: true,
       target: true,
@@ -354,6 +372,60 @@ export function PriceChartCard({
   /** Only auto-fit when pair/interval changes or first paint — not on every new candle (preserves zoom). */
   const chartViewKeyRef = useRef<string>('');
   const didFitContentRef = useRef(false);
+  /** Last bar logical index (0-based) for live-edge detection — updated when series data changes. */
+  const lastBarLogicalIndexRef = useRef(0);
+  /** While true, `subscribeVisibleLogicalRangeChange` ignores updates (programmatic fit/scroll). */
+  const programmaticViewportRef = useRef(false);
+  /**
+   * When true, live ticks skip `scrollToRealTime` (viewport stays put). Set when the user pans away from the
+   * live edge, leaves the chart plot (`pointerleave`), or the window blurs; cleared when the viewport is
+   * back at the live edge (pan or `pointerenter` resync) or on pair/interval / refit.
+   */
+  const skipScrollToRealTimeRef = useRef(false);
+  /** Line fallback (≤10 candles): avoid `Date.now()` per point — shifting times on every tick resets the x-axis. */
+  const lineFallbackAnchorSecRef = useRef(Math.floor(Date.now() / 1000));
+  const lineFallbackSeriesLenRef = useRef(-1);
+
+  const runProgrammaticViewport = useCallback((fn: () => void) => {
+    programmaticViewportRef.current = true;
+    try {
+      fn();
+    } finally {
+      requestAnimationFrame(() => {
+        programmaticViewportRef.current = false;
+      });
+    }
+  }, []);
+
+  /** After full `setData`, restore horizontal zoom when the user had panned off the live edge. */
+  function clampVisibleLogicalRange(
+    chart: IChartApi,
+    saved: { from: number; to: number } | null,
+    lastIdx: number,
+  ): void {
+    if (!saved || lastIdx < 0) return;
+    const from = Math.max(0, Math.min(saved.from, lastIdx));
+    const to = Math.max(from, Math.min(saved.to, lastIdx));
+    if (to - from < 0.2) return;
+    chart.timeScale().setVisibleLogicalRange({ from, to });
+  }
+
+  /** Latest viewport→skip logic for subscription + pointer handlers (chart mounts in layout effect). */
+  const applySkipScrollFromViewportRef = useRef<() => void>(() => {});
+  applySkipScrollFromViewportRef.current = () => {
+    if (programmaticViewportRef.current) return;
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const lastIdx = lastBarLogicalIndexRef.current;
+    if (lastIdx <= 0) {
+      skipScrollToRealTimeRef.current = false;
+      return;
+    }
+    const atLiveEdge = range.to >= lastIdx - 0.5;
+    skipScrollToRealTimeRef.current = !atLiveEdge;
+  };
 
   const staticLevelPrices = useMemo(
     () =>
@@ -367,40 +439,77 @@ export function PriceChartCard({
   );
 
   /**
-   * v5 autoscale only uses bar min/max — custom price lines do not widen the scale. Stop/liq often sit
-   * outside the tight mock line path (~±1.5% around last), so they render off-screen without this.
+   * v5 autoscale only uses bar min/max — custom price lines do not widen the scale. We merge a padded
+   * extent so levels stay in view. Risk levels (stop, liq) widen the merge only when close to the
+   * last/entry/target band; otherwise they stay off-scale and the line may clip — values remain in chips.
    */
   const overlayPriceAutoscaleExtent = useMemo(() => {
-    const prices: number[] = [];
-    if (visibleLevels.last && Number.isFinite(model.lastPrice) && model.lastPrice > 0) {
-      prices.push(model.lastPrice);
+    const primaryBand: number[] = [];
+    if (Number.isFinite(model.lastPrice) && model.lastPrice > 0) {
+      primaryBand.push(model.lastPrice);
     }
     if (visibleLevels.entry && Number.isFinite(staticLevelPrices.entry) && staticLevelPrices.entry > 0) {
-      prices.push(staticLevelPrices.entry);
-    }
-    if (visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0) {
-      prices.push(staticLevelPrices.stop);
+      primaryBand.push(staticLevelPrices.entry);
     }
     if (visibleLevels.target && Number.isFinite(staticLevelPrices.target) && staticLevelPrices.target > 0) {
-      prices.push(staticLevelPrices.target);
-    }
-    if (
-      showLiquidation &&
-      visibleLevels.liquidation &&
-      Number.isFinite(staticLevelPrices.liquidation) &&
-      staticLevelPrices.liquidation > 0
-    ) {
-      prices.push(staticLevelPrices.liquidation);
+      primaryBand.push(staticLevelPrices.target);
     }
     for (const aux of auxiliaryPriceLines ?? []) {
-      if (Number.isFinite(aux.price) && aux.price > 0) prices.push(aux.price);
+      if (Number.isFinite(aux.price) && aux.price > 0) primaryBand.push(aux.price);
     }
-    if (prices.length === 0) return null;
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const span = max - min;
-    const pad = span > 0 ? span * 0.03 : Math.max(min, max) * 0.002;
-    return { min: min - pad, max: max + pad };
+
+    if (primaryBand.length === 0) {
+      const fallback: number[] = [];
+      if (Number.isFinite(model.lastPrice) && model.lastPrice > 0) fallback.push(model.lastPrice);
+      if (visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0) {
+        fallback.push(staticLevelPrices.stop);
+      }
+      if (
+        showLiquidation &&
+        visibleLevels.liquidation &&
+        Number.isFinite(staticLevelPrices.liquidation) &&
+        staticLevelPrices.liquidation > 0
+      ) {
+        fallback.push(staticLevelPrices.liquidation);
+      }
+      if (fallback.length === 0) return null;
+      const lo = Math.min(...fallback);
+      const hi = Math.max(...fallback);
+      return padPriceExtent(lo, hi);
+    }
+
+    const pMin = Math.min(...primaryBand);
+    const pMax = Math.max(...primaryBand);
+    const pSpan = Math.max(pMax - pMin, pMax * 0.0005, 1);
+
+    let min = pMin;
+    let max = pMax;
+
+    const tryIncludeRisk = (price: number, enabled: boolean) => {
+      if (!enabled || !Number.isFinite(price) || price <= 0) return;
+      if (price >= pMin && price <= pMax) return;
+      if (price < pMin) {
+        const dist = pMin - price;
+        if (dist / pSpan <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) min = price;
+      } else {
+        const dist = price - pMax;
+        if (dist / pSpan <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) max = price;
+      }
+    };
+
+    tryIncludeRisk(
+      staticLevelPrices.stop,
+      visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0,
+    );
+    tryIncludeRisk(
+      staticLevelPrices.liquidation,
+      showLiquidation &&
+        visibleLevels.liquidation &&
+        Number.isFinite(staticLevelPrices.liquidation) &&
+        staticLevelPrices.liquidation > 0,
+    );
+
+    return padPriceExtent(min, max);
   }, [visibleLevels, staticLevelPrices, model.lastPrice, showLiquidation, auxiliaryPriceLines]);
 
   useLayoutEffect(() => {
@@ -490,13 +599,20 @@ export function PriceChartCard({
     lineRef.current = lineSeries;
     volRef.current = volSeries;
 
+    const onVisibleLogicalRangeChange = () => applySkipScrollFromViewportRef.current();
+
+    const timeScale = chart.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
+
     return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(onVisibleLogicalRangeChange);
       priceLineByKeyRef.current = {};
       auxPriceLineByIdRef.current = {};
       priceLineHostModeRef.current = null;
       chartViewKeyRef.current = '';
       didFitContentRef.current = false;
       candleStructRef.current = null;
+      skipScrollToRealTimeRef.current = false;
       chart.remove();
       chartRef.current = null;
       candleRef.current = null;
@@ -513,6 +629,15 @@ export function PriceChartCard({
     const h = Math.max(1, Math.floor(el.clientHeight));
     c.resize(w, h);
   }, [chartPlotHeightPx]);
+
+  /** Stop live auto-scroll when focus leaves the page (e.g. another tab) — same as leaving the chart. */
+  useEffect(() => {
+    const onBlur = () => {
+      skipScrollToRealTimeRef.current = true;
+    };
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, []);
 
   /** Widen right scale so setup price lines (stop / liq far from last) stay in view. */
   useEffect(() => {
@@ -559,10 +684,13 @@ export function PriceChartCard({
       chartViewKeyRef.current = viewKey;
       didFitContentRef.current = false;
       candleStructRef.current = null;
+      skipScrollToRealTimeRef.current = false;
+      lineFallbackSeriesLenRef.current = -1;
     }
 
     const candles = model.chartCandles ?? [];
     if (candles.length > 10) {
+      lineFallbackSeriesLenRef.current = -1;
       const last = candles[candles.length - 1];
       const struct = candleStructRef.current;
       const sameCandle =
@@ -570,6 +698,8 @@ export function PriceChartCard({
         struct &&
         struct.len === candles.length &&
         struct.lastTs === last.ts;
+
+      lastBarLogicalIndexRef.current = Math.max(0, candles.length - 1);
 
       if (sameCandle && last) {
         const t = toUtcTime(last.ts) as Time;
@@ -585,36 +715,52 @@ export function PriceChartCard({
           value: last.volume ?? 0,
           color: last.close >= last.open ? 'rgba(52,211,153,0.30)' : 'rgba(248,113,113,0.30)',
         });
-        chartRef.current?.timeScale().scrollToRealTime();
+        // Intrabar OHLC updates share the same logical index — do not scroll; avoids viewport drift / “resets”.
       } else {
         const chart = chartRef.current;
         const ts = chart?.timeScale();
+        const preserveViewport = skipScrollToRealTimeRef.current;
+        const savedLogical =
+          preserveViewport && chart && ts ? ts.getVisibleLogicalRange() : null;
+        const lastIdx = Math.max(0, candles.length - 1);
 
-        candleSeries.setData(
-          candles.map((c) => ({
-            time: toUtcTime(c.ts) as Time,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-          })),
-        );
-        volSeries.setData(
-          candles.map((c) => ({
-            time: toUtcTime(c.ts) as Time,
-            value: c.volume ?? 0,
-            color: c.close >= c.open ? 'rgba(52,211,153,0.30)' : 'rgba(248,113,113,0.30)',
-          })),
-        );
-        lineSeries.setData([]);
-        if (last) {
-          candleStructRef.current = { len: candles.length, lastTs: last.ts };
-        }
-        if (!didFitContentRef.current) {
-          ts?.fitContent();
-          didFitContentRef.current = true;
-        }
-        ts?.scrollToRealTime();
+        runProgrammaticViewport(() => {
+          candleSeries.setData(
+            candles.map((c) => ({
+              time: toUtcTime(c.ts) as Time,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+            })),
+          );
+          volSeries.setData(
+            candles.map((c) => ({
+              time: toUtcTime(c.ts) as Time,
+              value: c.volume ?? 0,
+              color: c.close >= c.open ? 'rgba(52,211,153,0.30)' : 'rgba(248,113,113,0.30)',
+            })),
+          );
+          lineSeries.setData([]);
+          if (last) {
+            candleStructRef.current = { len: candles.length, lastTs: last.ts };
+          }
+          lastBarLogicalIndexRef.current = lastIdx;
+          if (!didFitContentRef.current) {
+            ts?.fitContent();
+            didFitContentRef.current = true;
+            if (!preserveViewport && !skipScrollToRealTimeRef.current) {
+              ts?.scrollToRealTime();
+            }
+          } else if (preserveViewport && savedLogical != null && chart) {
+            clampVisibleLogicalRange(chart, savedLogical, lastIdx);
+            requestAnimationFrame(() => {
+              applySkipScrollFromViewportRef.current();
+            });
+          } else if (!skipScrollToRealTimeRef.current) {
+            ts?.scrollToRealTime();
+          }
+        });
       }
     } else {
       candleStructRef.current = null;
@@ -622,25 +768,49 @@ export function PriceChartCard({
       const ts = chart?.timeScale();
 
       const base = model.lastPrice;
+      const plen = model.priceSeries.length;
+      if (plen !== lineFallbackSeriesLenRef.current) {
+        lineFallbackSeriesLenRef.current = plen;
+        lineFallbackAnchorSecRef.current = Math.floor(Date.now() / 1000);
+      }
+      const anchorSec = lineFallbackAnchorSecRef.current;
       const series = model.priceSeries.map((v, i) => ({
-        time: (Math.floor(Date.now() / 1000) - (model.priceSeries.length - i) * 60) as Time,
+        time: (anchorSec - (plen - i) * 60) as Time,
         value: base * (0.985 + v * 0.03),
       }));
+      lastBarLogicalIndexRef.current = Math.max(0, series.length - 1);
+
       const lineIsUp =
         series.length >= 2 ? series[series.length - 1].value >= series[0].value : model.lastPrice >= prevPriceRef.current;
       lineSeries.applyOptions({
         color: lineIsUp ? '#34d399' : '#fb7185',
       });
-      lineSeries.setData(series);
-      candleSeries.setData([]);
-      volSeries.setData([]);
-      if (!didFitContentRef.current) {
-        ts?.fitContent();
-        didFitContentRef.current = true;
-      }
-      ts?.scrollToRealTime();
+      const preserveViewport = skipScrollToRealTimeRef.current;
+      const savedLogical =
+        preserveViewport && chart && ts ? ts.getVisibleLogicalRange() : null;
+      const lastIdxLine = Math.max(0, series.length - 1);
+      runProgrammaticViewport(() => {
+        lineSeries.setData(series);
+        candleSeries.setData([]);
+        volSeries.setData([]);
+        lastBarLogicalIndexRef.current = lastIdxLine;
+        if (!didFitContentRef.current) {
+          ts?.fitContent();
+          didFitContentRef.current = true;
+          if (!preserveViewport && !skipScrollToRealTimeRef.current) {
+            ts?.scrollToRealTime();
+          }
+        } else if (preserveViewport && savedLogical != null && chart) {
+          clampVisibleLogicalRange(chart, savedLogical, lastIdxLine);
+          requestAnimationFrame(() => {
+            applySkipScrollFromViewportRef.current();
+          });
+        } else if (!skipScrollToRealTimeRef.current) {
+          ts?.scrollToRealTime();
+        }
+      });
     }
-  }, [intervalLabel, model.chartCandles, model.lastPrice, model.pair, model.priceSeries]);
+  }, [intervalLabel, model.chartCandles, model.lastPrice, model.pair, model.priceSeries, runProgrammaticViewport]);
 
   useEffect(() => {
     const prev = prevPriceRef.current;
@@ -686,10 +856,7 @@ export function PriceChartCard({
     const strokeFor = (key: LevelKey) => {
       const style = levelStyles[key];
       if (useTimedSetupOverlays) {
-        let a = setupOverlayVisual.alphaScale;
-        if (key === 'stop' || key === 'liquidation') {
-          a = Math.max(0.42, a);
-        }
+        const a = tradeTimingLineAlpha(key, setupOverlayVisual.alphaScale);
         return hexToRgba(style.stroke, a);
       }
       return style.stroke;
@@ -701,19 +868,6 @@ export function PriceChartCard({
     };
 
     for (const key of visibleLevelKeys) {
-      if (key === 'last') {
-        if (!priceLineByKeyRef.current.last) {
-          const style = levelStyles.last;
-          priceLineByKeyRef.current.last = host.createPriceLine({
-            price: model.lastPrice,
-            color: style.stroke,
-            lineWidth: 1,
-            axisLabelVisible: true,
-            title: style.label,
-          });
-        }
-        continue;
-      }
       const style = levelStyles[key];
       const price = staticLevelPrices[key];
       if (!Number.isFinite(price) || price <= 0) {
@@ -742,7 +896,7 @@ export function PriceChartCard({
         });
       }
     }
-  }, [model.chartCandles, model.lastPrice, staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
+  }, [model.chartCandles, staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
 
   useEffect(() => {
     const candleSeries = candleRef.current;
@@ -789,14 +943,19 @@ export function PriceChartCard({
     if (liveRefitSeenKeyRef.current === liveTradeRefitKey) return;
     liveRefitSeenKeyRef.current = liveTradeRefitKey;
     didFitContentRef.current = false;
-    const ts = chartRef.current?.timeScale();
+    skipScrollToRealTimeRef.current = false;
     const id = window.requestAnimationFrame(() => {
-      ts?.fitContent();
-      didFitContentRef.current = true;
-      chartRef.current?.timeScale().scrollToRealTime();
+      const chart = chartRef.current;
+      if (!chart) return;
+      runProgrammaticViewport(() => {
+        const ts = chart.timeScale();
+        ts.fitContent();
+        didFitContentRef.current = true;
+        ts.scrollToRealTime();
+      });
     });
     return () => window.cancelAnimationFrame(id);
-  }, [liveTradeRefitKey]);
+  }, [liveTradeRefitKey, runProgrammaticViewport]);
 
   useEffect(() => {
     if (!setupControlled || setupMode) return;
@@ -810,7 +969,6 @@ export function PriceChartCard({
     if (setupKeys.length === 0) {
       setVisibleLevels((p) => ({
         ...p,
-        last: false,
         entry: false,
         stop: false,
         target: false,
@@ -837,7 +995,6 @@ export function PriceChartCard({
       } else if (!setupModeLiveRef.current) {
         setVisibleLevels((prev) => ({
           ...prev,
-          last: false,
           entry: false,
           stop: false,
           target: false,
@@ -857,7 +1014,7 @@ export function PriceChartCard({
     if (!setupFadeInArmRef.current) return;
 
     const keys = (
-      ['entry', 'stop', 'target', 'last', ...(showLiquidation ? (['liquidation'] as const) : [])] as LevelKey[]
+      ['entry', 'stop', 'target', ...(showLiquidation ? (['liquidation'] as const) : [])] as LevelKey[]
     ).filter((k) => visibleLevels[k]);
 
     if (keys.length === 0) return;
@@ -883,7 +1040,7 @@ export function PriceChartCard({
           const line = priceLineByKeyRef.current[key];
           if (line) {
             const stroke = levelStyles[key].stroke;
-            const peak = key === 'last' || !useTimedSetupOverlays ? 1 : cap;
+            const peak = !useTimedSetupOverlays ? 1 : tradeTimingLineAlpha(key, cap);
             line.applyOptions({ color: hexToRgba(stroke, t * peak) });
           }
         }
@@ -894,9 +1051,9 @@ export function PriceChartCard({
             const line = priceLineByKeyRef.current[key];
             if (line) {
               const stroke = levelStyles[key].stroke;
+              const endAlpha = !useTimedSetupOverlays ? 1 : tradeTimingLineAlpha(key, cap);
               line.applyOptions({
-                color:
-                  key === 'last' || !useTimedSetupOverlays ? stroke : hexToRgba(stroke, cap),
+                color: !useTimedSetupOverlays ? stroke : hexToRgba(stroke, endAlpha),
               });
             }
           }
@@ -919,12 +1076,6 @@ export function PriceChartCard({
     useTimedSetupOverlays,
     setupOverlayVisual.alphaScale,
   ]);
-
-  useEffect(() => {
-    const line = priceLineByKeyRef.current.last;
-    if (!line || !visibleLevels.last) return;
-    line.applyOptions({ price: model.lastPrice });
-  }, [model.lastPrice, visibleLevels.last]);
 
   useEffect(() => {
     const vol = volRef.current;
@@ -1003,7 +1154,15 @@ export function PriceChartCard({
                     Price chart
                   </span>
                   {liveHeaderMetrics?.secondaryLine ? (
-                    <p className="max-w-[min(100%,16rem)] truncate text-[7px] font-semibold tabular-nums text-cyan-200/80 md:text-[8px]">
+                    <p
+                      className={`max-w-[min(100%,16rem)] truncate text-[7px] font-semibold tabular-nums md:text-[8px] ${
+                        liveHeaderMetrics.secondaryLineTone === 'positive'
+                          ? 'text-emerald-300'
+                          : liveHeaderMetrics.secondaryLineTone === 'negative'
+                            ? 'text-rose-300'
+                            : 'text-sigflo-muted'
+                      }`}
+                    >
                       {liveHeaderMetrics.secondaryLine}
                     </p>
                   ) : null}
@@ -1054,7 +1213,7 @@ export function PriceChartCard({
           {liveTradeMode && liveHeaderMetrics && !suppressExchangeHeroLivePrice ? (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#00ffc8]/12 bg-gradient-to-r from-[#00ffc8]/[0.06] via-black/20 to-transparent px-[4.5px] py-[4px] md:px-[5.5px]">
               <span className="text-[6px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3]/90 md:text-[7px]">
-                Active trade
+                {liveActivePositionTitle}
               </span>
               <span className="text-[7px] font-medium tabular-nums text-sigflo-muted md:text-[8px]">
                 Risk{' '}
@@ -1210,6 +1369,12 @@ export function PriceChartCard({
               : 'h-[20dvh] min-h-[72px] max-h-[20dvh] w-full shrink-0 overflow-hidden bg-black/20 md:h-[var(--chart-h-desktop)] md:max-h-none md:min-h-[200px]'
           }
           style={chartPlotHeightPx != null ? { height: chartPlotHeightPx } : undefined}
+          onPointerLeave={() => {
+            skipScrollToRealTimeRef.current = true;
+          }}
+          onPointerEnter={() => {
+            applySkipScrollFromViewportRef.current();
+          }}
         />
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
           <div className="relative z-10 flex min-w-0 flex-wrap items-center gap-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:text-[8px]">

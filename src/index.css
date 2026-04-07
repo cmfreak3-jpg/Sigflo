@@ -5,6 +5,11 @@
 @layer base {
   html {
     @apply scroll-smooth bg-sigflo-bg text-sigflo-text;
+    /** ~15px root instead of 16px — scales rem-based UI down slightly so the app feels less “zoomed in”. */
+    font-size: 93.75%;
+    /** Stop mobile Safari/Chrome from auto-boosting text size (reads as extra zoom). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply min-h-[100dvh] antialiased;
@@ -454,4 +459,33 @@
   width: 11px;
   height: 11px;
   box-shadow: 0 0 6px -2px rgba(34, 211, 238, 0.45);
+}
+
+/**
+ * LiveMarketStrip — horizontal ticker (duplicate row; move by half total width).
+ * Uses translate3d so the animation reliably runs (Tailwind keyframes used translate() which
+ * some builds/browsers handled poorly for this loop).
+ */
+@keyframes sigflo-live-ticker-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.sigflo-live-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: sigflo-live-ticker-scroll 56s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-live-ticker-track {
+    animation: none;
+    transform: none;
+  }
 }

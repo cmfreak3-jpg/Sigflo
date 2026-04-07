@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { MarketCard } from '@/components/markets/MarketCard';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
+import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { useMarketsScanner } from '@/hooks/useMarketsScanner';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
 import type { MarketScannerRow } from '@/types/markets';
@@ -17,6 +19,7 @@ export default function MarketsScreen() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<MarketsTab>('tracked');
   const [lockingSymbol, setLockingSymbol] = useState<string | null>(null);
+  const [newsScanOpen, setNewsScanOpen] = useState(false);
   const { trackedRows, moverRows, mode, connection, tickersLoading } = useMarketsScanner();
   const navigateWithTransition = (to: string) => {
     const w = window as Window & { startViewTransition?: (cb: () => void) => void };
@@ -57,7 +60,12 @@ export default function MarketsScreen() {
     () => rows.filter((r) => r.status === 'triggered').map((r) => r.pair),
     [rows],
   );
-  const miniCharts = useFeedMiniCharts(rows.map((r) => r.pair), { fastPairs, fastRefreshMs: 8_000 });
+  const marketsChartInterval = useSyncedTradeChartInterval();
+  const miniCharts = useFeedMiniCharts(rows.map((r) => r.pair), {
+    interval: marketsChartInterval,
+    fastPairs,
+    fastRefreshMs: 8_000,
+  });
   const statusDot =
     connection === 'connected'
       ? 'bg-sigflo-accent'
@@ -91,7 +99,14 @@ export default function MarketsScreen() {
               Triggered
             </span>
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setNewsScanOpen(true)}
+              className="inline-flex items-center rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07]"
+            >
+              Today&apos;s brief
+            </button>
             <button
               type="button"
               onClick={() => navigate('/feed')}
@@ -149,6 +164,8 @@ export default function MarketsScreen() {
           ))}
         </div>
       </div>
+
+      <MarketNewsScanSheet open={newsScanOpen} onClose={() => setNewsScanOpen(false)} />
     </div>
   );
 }

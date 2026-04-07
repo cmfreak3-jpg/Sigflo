@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
 import { OrderInputsCard } from '@/components/trade/OrderInputsCard';
 import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
@@ -6,6 +7,7 @@ import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
 import type { DerivedTradeMetrics } from '@/lib/tradeRisk';
+import { buildGroundedMarketContext } from '@/lib/buildGroundedMarketContext';
 import type { MarketMode, TradeSide, TradeViewModel } from '@/types/trade';
 
 function fmtManageSignedUsd(n: number): string {
@@ -52,6 +54,28 @@ export type TradeControlsProps = {
   onTargetStrChange: (s: string) => void;
   metrics: DerivedTradeMetrics;
   estFeeUsd: number;
+  balanceLabel?: string;
+  balanceHelper?: string;
+  /** Live UTA / wallet line for the balance readout; sizing still uses `metrics.balanceUsd`. */
+  displayBalanceUsd?: number | null;
+  fundingBalanceUsd?: number | null;
+  fundingBalanceAsset?: string | null;
+  minOrderUsd?: number | null;
+  orderSymbol?: string | null;
+  /** Futures: exchange max leverage for the symbol (slider + chips cap). */
+  maxLeverage?: number | null;
+  /** UTA margin locked (from exchange overview). */
+  utaMarginInUseUsd?: number | null;
+  /** Bybit UTA total equity (includes unrealized on exchange positions). */
+  utaEquityUsd?: number | null;
+  /** Bybit UTA unrealized PnL aggregate (exchange positions only). */
+  utaUnrealizedPnlUsd?: number | null;
+  /** Bybit UTA wallet balance (Bybit-reported; may differ from equity). */
+  utaWalletBalanceUsd?: number | null;
+  /** When set, Position size panel shows Transfer → exchange asset UI (Funding ↔ UTA). */
+  assetTransferHref?: string | null;
+  /** Active chart interval label for grounded AI context (e.g. 15m, 1H). */
+  chartInterval: string;
 };
 
 export function TradeControls(props: TradeControlsProps) {
@@ -80,13 +104,49 @@ export function TradeControls(props: TradeControlsProps) {
     onTargetStrChange,
     metrics,
     estFeeUsd,
+    balanceLabel,
+    balanceHelper,
+    displayBalanceUsd,
+    fundingBalanceUsd,
+    fundingBalanceAsset,
+    minOrderUsd,
+    orderSymbol,
+    maxLeverage,
+    utaMarginInUseUsd,
+    utaEquityUsd,
+    utaUnrealizedPnlUsd,
+    utaWalletBalanceUsd,
+    assetTransferHref,
+    chartInterval,
   } = props;
+
+  const groundedAiContext = useMemo(
+    () =>
+      buildGroundedMarketContext({
+        signal: selectedSignal,
+        status: scannerStatus,
+        tradeScore: metrics.riskSummary.tradeScore,
+        market,
+        chartInterval,
+        model: mergedModel,
+        recentCandles: mergedModel.chartCandles,
+      }),
+    [
+      chartInterval,
+      market,
+      mergedModel,
+      metrics.riskSummary.tradeScore,
+      scannerStatus,
+      selectedSignal,
+    ],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col space-y-1 px-3 pb-4 pt-0">
       {manageDataInvalid ? (
         <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-center text-[11px] leading-snug text-amber-100/90">
-          Position data unavailable — showing new trade layout.
+          Could not load this position from the URL (missing pair, size, or side). Open the position from Portfolio
+          again, or switch back to the trade scanner.
         </p>
       ) : null}
       {ticketIntent === 'close' ? (
@@ -171,7 +231,7 @@ export function TradeControls(props: TradeControlsProps) {
                 <dd className="mt-0.5 font-semibold text-white">{manageSizeSummary(manageCtx)}</dd>
               </div>
               <div className="col-span-2">
-                <dt className="text-sigflo-muted">Open PnL</dt>
+                <dt className="text-sigflo-muted">Unrealized PnL (plan)</dt>
                 <dd
                   className={`mt-0.5 font-mono font-semibold tabular-nums ${
                     managePnlDisplay.pnlUsd >= 0 ? 'text-emerald-300' : 'text-rose-300'
@@ -193,6 +253,7 @@ export function TradeControls(props: TradeControlsProps) {
       <OrderInputsCard
         market={market}
         balanceUsd={metrics.balanceUsd}
+        displayBalanceUsd={displayBalanceUsd}
         amountUsd={amountUsd}
         leverage={leverage}
         side={side}
@@ -209,6 +270,18 @@ export function TradeControls(props: TradeControlsProps) {
         quoteLastPrice={mergedModel.lastPrice}
         quotePair={mergedModel.pair}
         referenceEntryPrice={mergedModel.entry}
+        balanceLabel={balanceLabel}
+        balanceHelper={balanceHelper}
+        fundingBalanceUsd={fundingBalanceUsd}
+        fundingBalanceAsset={fundingBalanceAsset}
+        minOrderUsd={minOrderUsd}
+        orderSymbol={orderSymbol}
+        maxLeverage={maxLeverage}
+        utaMarginInUseUsd={utaMarginInUseUsd}
+        utaEquityUsd={utaEquityUsd}
+        utaUnrealizedPnlUsd={utaUnrealizedPnlUsd}
+        utaWalletBalanceUsd={utaWalletBalanceUsd}
+        assetTransferHref={assetTransferHref}
         stopInput={!isManageMode ? stopStr : undefined}
         takeProfitInput={!isManageMode ? targetStr : undefined}
         onStopInputChange={!isManageMode ? onStopStrChange : undefined}
@@ -227,7 +300,12 @@ export function TradeControls(props: TradeControlsProps) {
       />
 
       {!isManageMode ? (
-        <ScannerInsightCard signal={selectedSignal} status={scannerStatus} tradeScore={metrics.riskSummary.tradeScore} />
+        <ScannerInsightCard
+          signal={selectedSignal}
+          status={scannerStatus}
+          tradeScore={metrics.riskSummary.tradeScore}
+          groundedContext={groundedAiContext}
+        />
       ) : null}
 
       {!isManageMode ? (

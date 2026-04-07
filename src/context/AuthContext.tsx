@@ -41,14 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       authMode: isSupabaseConfigured() ? 'supabase' : 'dev',
       signInWithGoogle: async () => {
-        if (!supabase) return;
+        if (!supabase) {
+          throw new Error('Supabase is not configured (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
+        }
         const base = import.meta.env.BASE_URL.replace(/\/$/, '');
         const redirectTo = `${window.location.origin}${base}/profile`;
-        const { error } = await supabase.auth.signInWithOAuth({
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
-          options: { redirectTo },
+          options: {
+            redirectTo,
+            /** Return the provider URL so we always navigate explicitly (embedded browsers often skip auto-redirect). */
+            skipBrowserRedirect: true,
+          },
         });
         if (error) throw error;
+        if (data?.url) {
+          window.location.assign(data.url);
+          return;
+        }
+        throw new Error(
+          'Google sign-in did not return a redirect URL. Add this site to Supabase Auth → URL Configuration redirect allow list.',
+        );
       },
       signOut: async () => {
         if (!supabase) return;

@@ -1,16 +1,18 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PositionSwipeCard } from '@/components/portfolio/PositionSwipeCard';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
+import { usePaperPositionsFromStorage } from '@/hooks/usePaperPositionsFromStorage';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { isFeedActionableOpportunity, symbolToPair } from '@/lib/marketScannerRows';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
+import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
+import { paperPairToQueryParam, SESSION_INTENTIONAL_PAPER_CLEAR_KEY } from '@/lib/paperPositionsStorage';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
 import type { ClosedTradeRow, ExchangeId, ExchangeSnapshot, PositionItem } from '@/types/integrations';
 
 const ACCENT = '#00ffc8';
-const BYBIT_HISTORY_HREF = 'https://www.bybit.com/app/assets/home';
 
 /** Subtle lift on hover, tuck on press — mobile-friendly */
 const cardInteract = 'transition-transform duration-200 ease-out will-change-transform hover:scale-[1.01] active:scale-[0.98]';
@@ -252,9 +254,40 @@ function buildSparklineSeries(netWorth: number, up: boolean): number[] {
 
 export default function PortfolioScreen() {
   const navigate = useNavigate();
-  const { items: snapshots, closedTrades, loading } = useAccountSnapshot();
+  const { items: snapshots, closedTrades, loading } = useAccountSnapshot({ pollMs: 12_000 });
   const { signals, liveTickersBySymbol } = useSignalEngine();
+  const paperPositions = usePaperPositionsFromStorage();
   const [closedExpanded, setClosedExpanded] = useState(false);
+  const prevPaperLenRef = useRef<number | null>(null);
+  const [practiceVanishedNotice, setPracticeVanishedNotice] = useState(false);
+
+  useEffect(() => {
+    const n = paperPositions.length;
+    if (prevPaperLenRef.current === null) {
+      prevPaperLenRef.current = n;
+      return;
+    }
+    const prev = prevPaperLenRef.current;
+    prevPaperLenRef.current = n;
+    if (prev <= 0 || n !== 0) return;
+    try {
+      const raw = sessionStorage.getItem(SESSION_INTENTIONAL_PAPER_CLEAR_KEY);
+      if (raw) {
+        const t = Number(raw);
+        if (Number.isFinite(t) && Date.now() - t < 60_000) {
+          sessionStorage.removeItem(SESSION_INTENTIONAL_PAPER_CLEAR_KEY);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setPracticeVanishedNotice(true);
+  }, [paperPositions.length]);
+
+  useEffect(() => {
+    if (paperPositions.length > 0) setPracticeVanishedNotice(false);
+  }, [paperPositions.length]);
 
   const feedOpportunityCount = useMemo(() => signals.filter(isFeedActionableOpportunity).length, [signals]);
 
@@ -584,16 +617,29 @@ export default function PortfolioScreen() {
         <p className="px-1 text-center text-[11px] leading-relaxed text-sigflo-muted">{riskInsight}</p>
       </section>
 
-      {/* 3. Open positions */}
+      {/* 3. Open positions — exchange (API) + practice (browser, from Trade Long/Short demo) */}
       <section className="space-y-3">
         <h2 className={sectionTitleClass}>Open positions</h2>
-        {!connected ? (
+        <p className="text-[11px] leading-snug text-sigflo-muted">
+          <span className="text-sigflo-text/90">Live book</span> (Bybit) appears when linked.{' '}
+          <span className="text-cyan-200/85">Practice legs</span> are saved here after you tap Long/Short on Trade — they are not sent to the exchange.
+        </p>
+        {!connected && paperPositions.length === 0 ? (
           <div className="rounded-[16px] border border-dashed border-white/[0.1] bg-black/25 px-4 py-6 text-center text-sm text-sigflo-muted">
-            No exchange linked — connect in Account to sync positions.
+            No exchange linked — connect in Account for live positions. Open a pair on{' '}
+            <Link to="/trade" className="font-semibold text-sigflo-accent underline underline-offset-2">
+              Trade
+            </Link>{' '}
+            and use Long/Short to add a practice position (saved on this device).
           </div>
-        ) : loading ? (
-          <p className="text-sm text-sigflo-muted">Loading positions…</p>
-        ) : positions.length === 0 ? (
+        ) : null}
+        {connected && loading ? <p className="text-sm text-sigflo-muted">Loading positions…</p> : null}
+        {connected && !loading && positions.length === 0 && paperPositions.length > 0 ? (
+          <p className="rounded-[14px] border border-white/[0.06] bg-black/20 px-3.5 py-2.5 text-center text-[12px] text-sigflo-muted">
+            No open positions on your exchange — your saved practice legs are below.
+          </p>
+        ) : null}
+        {connected && !loading && positions.length === 0 && paperPositions.length === 0 ? (
           <div
             className={`rounded-[16px] border border-sigflo-accent/15 bg-gradient-to-b from-sigflo-accent/[0.07] to-sigflo-surface/90 px-4 py-6 text-center shadow-[0_0_28px_-12px_rgba(0,255,200,0.2)] ${cardInteract}`}
           >
@@ -606,7 +652,8 @@ export default function PortfolioScreen() {
               View Opportunities →
             </Link>
           </div>
-        ) : (
+        ) : null}
+        {connected && !loading && positions.length > 0 ? (
           <div className="space-y-2.5">
             {multiBookLine ? (
               <p className="rounded-[14px] border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.06] to-transparent px-3.5 py-2.5 text-[12px] font-medium leading-snug tracking-tight text-cyan-100/95">
@@ -724,7 +771,73 @@ export default function PortfolioScreen() {
               );
             })}
           </div>
-        )}
+        ) : null}
+
+        {!connected && paperPositions.length > 0 ? (
+          <p className="text-center text-[12px] leading-snug text-sigflo-muted">
+            Link your exchange in{' '}
+            <Link to="/profile" className="font-semibold text-sigflo-accent underline underline-offset-2">
+              Account
+            </Link>{' '}
+            to sync live positions — practice legs below stay on this device only.
+          </p>
+        ) : null}
+
+        {practiceVanishedNotice && paperPositions.length === 0 ? (
+          <div className="rounded-[14px] border border-amber-400/35 bg-amber-500/[0.09] px-3.5 py-3 text-left shadow-[0_0_24px_-12px_rgba(251,191,36,0.35)]">
+            <p className="text-[12px] font-semibold leading-snug text-amber-100/95">
+              Practice legs disappeared from this device
+            </p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-amber-100/75">
+              They are stored only in this browser (not on the exchange). If you did not tap Close, common causes are
+              cleared site data, private/incognito mode, storage limits, or another tab resetting data.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-semibold text-amber-100/95 transition hover:bg-amber-500/25"
+                onClick={() => setPracticeVanishedNotice(false)}
+              >
+                Dismiss
+              </button>
+              <Link
+                to="/trade"
+                className="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-white/90 transition hover:bg-white/10"
+              >
+                Open Trade
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
+        {paperPositions.length > 0 ? (
+          <div className="space-y-2 pt-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/80">Practice · saved on this device</p>
+            {paperPositions.map((p) => (
+              <Link
+                key={p.id}
+                to={`/trade?pair=${encodeURIComponent(paperPairToQueryParam(p.symbol))}`}
+                className={`block rounded-[16px] border border-cyan-400/25 bg-gradient-to-b from-cyan-500/[0.07] to-black/30 px-4 py-3 shadow-[0_0_20px_-14px_rgba(0,255,200,0.35)] ${cardInteract}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-base font-bold tracking-tight text-white">{p.symbol}</p>
+                  <span
+                    className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                      p.side === 'long' ? 'bg-emerald-500/25 text-emerald-300' : 'bg-rose-500/25 text-rose-300'
+                    }`}
+                  >
+                    {p.side === 'long' ? 'LONG' : 'SHORT'}
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] text-sigflo-muted">
+                  Entry {formatQuoteNumber(p.entryPrice)} · ~$
+                  {Math.round(p.positionNotionalUsd).toLocaleString('en-US')} notional · demo (not on exchange)
+                </p>
+                <p className="mt-2 text-right text-[11px] font-semibold text-cyan-200/90">Open in Trade →</p>
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {/* 4. Performance */}
@@ -816,7 +929,7 @@ export default function PortfolioScreen() {
               ))
             )}
             <a
-              href={BYBIT_HISTORY_HREF}
+              href={BYBIT_APP_ASSETS_HOME_HREF}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 flex w-full items-center justify-center rounded-xl border border-sigflo-accent/30 py-2.5 text-xs font-semibold text-sigflo-accent transition hover:bg-sigflo-accent/10"

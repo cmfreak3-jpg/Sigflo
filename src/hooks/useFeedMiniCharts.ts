@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { fetchKlines } from '@/services/bybit/client';
-import type { Candle } from '@/types/market';
+import type { Candle, KlineInterval } from '@/types/market';
 
 type CandleMap = Record<string, Candle[]>;
-type UseFeedMiniChartsOptions = {
+export type UseFeedMiniChartsOptions = {
+  /** Same Bybit interval as the trade chart (`sigflo.trade.chartInterval`). */
+  interval: TradeChartInterval;
   fastPairs?: string[];
   refreshMs?: number;
   fastRefreshMs?: number;
@@ -16,18 +19,27 @@ function pairToLinearSymbol(pair: string): string {
   return `${pair.replace(/USDT$/i, '').toUpperCase()}USDT`;
 }
 
-export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOptions): CandleMap {
+function miniCacheKey(pair: string, interval: TradeChartInterval): string {
+  return `${pair}|${interval}`;
+}
+
+export function useFeedMiniCharts(pairs: string[], options: UseFeedMiniChartsOptions): CandleMap {
   const [rows, setRows] = useState<CandleMap>({});
+  const interval = options.interval;
   const activePairs = useMemo(() => [...new Set(pairs.map((p) => p.toUpperCase()))], [pairs]);
   const fastPairSet = useMemo(
-    () => new Set((options?.fastPairs ?? []).map((p) => p.toUpperCase())),
-    [options?.fastPairs],
+    () => new Set((options.fastPairs ?? []).map((p) => p.toUpperCase())),
+    [options.fastPairs],
   );
   const activeKey = useMemo(() => activePairs.join('|'), [activePairs]);
   const fastKey = useMemo(() => [...fastPairSet].sort().join('|'), [fastPairSet]);
-  const refreshMs = options?.refreshMs ?? 30_000;
-  const fastRefreshMs = options?.fastRefreshMs ?? 10_000;
+  const refreshMs = options.refreshMs ?? 30_000;
+  const fastRefreshMs = options.fastRefreshMs ?? 10_000;
   const requestRef = useRef(0);
+
+  useEffect(() => {
+    setRows({});
+  }, [interval]);
 
   useEffect(() => {
     if (activePairs.length === 0) {
@@ -44,7 +56,8 @@ export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOp
       const misses: string[] = [];
 
       for (const pair of activePairs) {
-        const hit = cache.get(pair);
+        const key = miniCacheKey(pair, interval);
+        const hit = cache.get(key);
         const ttl = fastPairSet.has(pair) ? Math.min(CACHE_TTL_MS, fastRefreshMs + 1500) : CACHE_TTL_MS;
         if (hit && now - hit.fetchedAt <= ttl) next[pair] = hit.candles;
         else misses.push(pair);
@@ -58,7 +71,11 @@ export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOp
       const fetched = await Promise.all(
         misses.map(async (pair) => {
           try {
-            const candles = await fetchKlines(pairToLinearSymbol(pair), '5', 34);
+            const candles = await fetchKlines(
+              pairToLinearSymbol(pair),
+              interval as KlineInterval,
+              34,
+            );
             return { pair, candles };
           } catch {
             return { pair, candles: [] as Candle[] };
@@ -70,7 +87,7 @@ export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOp
       const merged: CandleMap = {};
       for (const row of fetched) {
         if (row.candles.length > 0) {
-          cache.set(row.pair, { candles: row.candles, fetchedAt: Date.now() });
+          cache.set(miniCacheKey(row.pair, interval), { candles: row.candles, fetchedAt: Date.now() });
           merged[row.pair] = row.candles;
         }
       }
@@ -86,7 +103,7 @@ export function useFeedMiniCharts(pairs: string[], options?: UseFeedMiniChartsOp
       cancelled = true;
       window.clearInterval(t);
     };
-  }, [activeKey, fastKey, refreshMs, fastRefreshMs]);
+  }, [activeKey, fastKey, interval, refreshMs, fastRefreshMs]);
 
   return rows;
 }

@@ -1,4 +1,4 @@
-import { formatQuoteNumber } from '@/lib/formatQuote';
+import { formatQuoteGuidance } from '@/lib/formatQuote';
 import type { ExitGuidance } from '@/lib/exitGuidance';
 import type {
   AutomationSafeguards,
@@ -65,7 +65,7 @@ export function applySafeguardsToGuidance(
       headline: 'EXIT',
       confidenceLabel: 'High',
       reason: 'Unrealized loss reached your max-loss safeguard.',
-      action: `Exit toward $${formatQuoteNumber(stop)}`,
+      action: `Exit toward ~$${formatQuoteGuidance(stop)}`,
       referencePrice: stop,
     };
   }
@@ -81,7 +81,7 @@ export function applySafeguardsToGuidance(
       headline: '',
       confidenceLabel: 'Medium',
       reason: 'Below your minimum profit threshold for automated trims.',
-      action: `Let it work toward $${formatQuoteNumber(target)}`,
+      action: `Let it work toward take-profit ~$${formatQuoteGuidance(target)}`,
       referencePrice: nudge,
     };
   }
@@ -114,16 +114,16 @@ export function nextPlannedAutomationLine(args: {
 
   // auto
   if (g.state === 'exit' && !safeguards.allowFullAutoClose) {
-    return `Suggests full exit near $${formatQuoteNumber(g.referencePrice)} — auto close off.`;
+    return `Suggests full exit near $${formatQuoteGuidance(g.referencePrice)} — auto close off.`;
   }
   if (g.state === 'trim' && !safeguards.allowPartialExits) {
     return `Near target — partial auto off; watching only.`;
   }
   if (g.state === 'trim') {
-    return `Will trim ~50% near $${formatQuoteNumber(g.referencePrice)}`;
+    return `Will trim ~50% near $${formatQuoteGuidance(g.referencePrice)}`;
   }
   if (g.state === 'exit') {
-    return `Will close fully near $${formatQuoteNumber(g.referencePrice)}`;
+    return `Will close fully near $${formatQuoteGuidance(g.referencePrice)}`;
   }
   return 'Automation watching trend and risk.';
 }
