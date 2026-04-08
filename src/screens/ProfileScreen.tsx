@@ -295,6 +295,15 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleManualSync() {
+    setSyncBusy(true);
+    try {
+      await Promise.all([refreshIntegrations(), refreshSnapshots()]);
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-3.5 pb-6 pt-4">
       <div className="px-1">
@@ -417,21 +426,28 @@ export default function ProfileScreen() {
             );
           })}
         </div>
-        {integrationsLoading || snapshotLoading ? <p className="mt-2 text-[11px] text-sigflo-muted">Syncing integrations...</p> : null}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {integrationsLoading || snapshotLoading ? (
+            <p className="text-[11px] text-sigflo-muted">Syncing integrations...</p>
+          ) : (
+            <p className="text-[11px] text-sigflo-muted">Need a refresh? Sync manually.</p>
+          )}
+          <button
+            type="button"
+            disabled={syncBusy}
+            onClick={() => void handleManualSync()}
+            className="shrink-0 rounded-lg border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-text transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            {syncBusy ? 'Syncing...' : 'Sync now'}
+          </button>
+        </div>
         {syncIssue ? (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2">
             <p className="text-[11px] text-amber-100">Last sync failed: {syncIssue}</p>
             <button
               type="button"
               disabled={syncBusy}
-              onClick={async () => {
-                setSyncBusy(true);
-                try {
-                  await Promise.all([refreshIntegrations(), refreshSnapshots()]);
-                } finally {
-                  setSyncBusy(false);
-                }
-              }}
+              onClick={() => void handleManualSync()}
               className="shrink-0 rounded-lg border border-amber-200/35 bg-amber-200/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100 transition hover:bg-amber-200/15 disabled:opacity-50"
             >
               {syncBusy ? 'Retrying...' : 'Retry'}

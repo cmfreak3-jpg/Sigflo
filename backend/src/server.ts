@@ -49,8 +49,23 @@ app.use('/api/integrations', requireAuth, integrationsRouter);
 app.use('/api/portfolio', requireAuth, portfolioRouter);
 app.use('/api/trade', requireAuth, tradeRouter);
 
+function serializeError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { error: String(error) };
+  const out: Record<string, unknown> = {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  };
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause !== undefined) out.cause = serializeError(cause);
+  if (error instanceof AggregateError) {
+    out.errors = error.errors.map((item) => serializeError(item));
+  }
+  return out;
+}
+
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log('error', 'Unhandled API error.', { error: String(err) });
+  log('error', 'Unhandled API error.', serializeError(err));
   res.status(500).json({ error: 'Internal server error' });
 });
 
