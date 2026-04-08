@@ -244,9 +244,11 @@ export default function ProfileScreen() {
       setSecurityBusy('2fa');
       setSecurityMessage(null);
       const mfa = (supabase.auth as unknown as { mfa?: Record<string, unknown> }).mfa;
-      const challenge = (mfa as { challenge?: (args: { factorId: string }) => Promise<{ data?: any; error?: Error }> })?.challenge;
+      const challenge = (mfa as {
+        challenge?: (args: { factorId: string }) => Promise<{ data?: { id?: string }; error?: Error }>;
+      })?.challenge;
       const verify = (mfa as {
-        verify?: (args: { factorId: string; challengeId: string; code: string }) => Promise<{ data?: any; error?: Error }>;
+        verify?: (args: { factorId: string; challengeId: string; code: string }) => Promise<{ data?: unknown; error?: Error }>;
       })?.verify;
       if (!challenge || !verify) {
         setSecurityMessage('This Supabase SDK version does not support MFA verification APIs.');
@@ -806,15 +808,42 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
   const breakdown = snapshot.accountBreakdown ?? null;
 
   if (!breakdown) {
-    return (
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balances</p>
-          <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
+    if (snapshot.status === 'error') {
+      return (
+        <p className="mt-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-2 text-[11px] leading-snug text-rose-100/95">
+          Portfolio sync failed for this exchange. Try Sync now, or disconnect and reconnect after checking API key
+          permissions.
+        </p>
+      );
+    }
+    const noRows = snapshot.balances.length === 0 && snapshot.positions.length === 0;
+    if (noRows) {
+      return (
+        <div className="mt-2 space-y-2">
+          <p className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-2.5 py-2 text-[11px] leading-snug text-amber-100/95">
+            Connected, but <span className="font-semibold">no wallet summary</span> came back from Bybit. This is not
+            “$0” — the app could not read UTA / Funding / spot wallets. Check: API key has{' '}
+            <span className="font-semibold">Wallet</span> (and Contracts) read access; withdrawals stay off; if the key
+            uses an IP allowlist, add your <span className="font-semibold">backend host</span> (e.g. Railway). Unified
+            Trading accounts work best with our sync.
+          </p>
         </div>
-        <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
-          <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
+      );
+    }
+    return (
+      <div className="mt-2 space-y-1.5">
+        <p className="text-[10px] text-sigflo-muted">
+          USD totals unavailable — showing raw row counts from the last sync.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balance rows</p>
+            <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
+          </div>
+          <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
+            <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
+          </div>
         </div>
       </div>
     );
