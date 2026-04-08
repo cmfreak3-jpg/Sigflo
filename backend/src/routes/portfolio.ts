@@ -8,6 +8,18 @@ import type { ClosedTradeItem, ExchangeId } from '../exchanges/types.js';
 
 type ClosedTradeRow = ClosedTradeItem & { exchange: ExchangeId };
 
+/** Avoid flooding logs when the SPA polls every ~12s with the same Bybit 403. */
+const lastWarnAt = new Map<string, number>();
+const WARN_THROTTLE_MS = 60_000;
+
+function logPortfolioWarnThrottled(key: string, message: string, meta: Record<string, unknown>) {
+  const now = Date.now();
+  const prev = lastWarnAt.get(key) ?? 0;
+  if (now - prev < WARN_THROTTLE_MS) return;
+  lastWarnAt.set(key, now);
+  log('warn', message, meta);
+}
+
 export const portfolioRouter = Router();
 
 portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
@@ -76,7 +88,12 @@ portfolioRouter.get('/closed-trades', async (req: AuthedRequest, res) => {
         merged.push({ ...row, exchange: integration.exchange });
       }
     } catch (error) {
-      log('warn', 'Closed trades fetch failed.', { exchange: integration.exchange, error: String(error) });
+      const msg = error instanceof Error ? error.message : String(error);
+      logPortfolioWarnThrottled(
+        `closed:${integration.exchange}:${msg.slice(0, 120)}`,
+        'Closed trades fetch failed.',
+        { exchange: integration.exchange, error: msg },
+      );
     }
   }
 

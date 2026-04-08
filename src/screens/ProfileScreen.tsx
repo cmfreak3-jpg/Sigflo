@@ -809,11 +809,23 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
 
   if (!breakdown) {
     if (snapshot.status === 'error') {
+      const detail = snapshot.syncError?.trim();
       return (
-        <p className="mt-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-2 text-[11px] leading-snug text-rose-100/95">
-          Portfolio sync failed for this exchange. Try Sync now, or disconnect and reconnect after checking API key
-          permissions.
-        </p>
+        <div className="mt-2 space-y-1.5 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-2 text-[11px] leading-snug text-rose-100/95">
+          <p>
+            Portfolio sync failed for this exchange. Try Sync now, or disconnect and reconnect after checking API key
+            permissions.
+          </p>
+          {detail ? (
+            <p className="font-mono text-[10px] text-rose-50/95 [overflow-wrap:anywhere]">{detail}</p>
+          ) : null}
+          {detail && /\b403\b|HTTP 403/i.test(detail) ? (
+            <p className="text-[10px] text-sigflo-muted">
+              If your Bybit key uses an IP allowlist, add your backend&apos;s outbound IP (e.g. Railway) or use &quot;No
+              IP restriction&quot; while debugging.
+            </p>
+          ) : null}
+        </div>
       );
     }
     const noRows = snapshot.balances.length === 0 && snapshot.positions.length === 0;

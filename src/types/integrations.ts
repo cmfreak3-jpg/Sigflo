@@ -72,6 +72,8 @@ export type ExchangeSnapshot = {
   balances: BalanceItem[];
   positions: PositionItem[];
   accountBreakdown?: ExchangeAccountBreakdown | null;
+  /** Present when `status === 'error'` — e.g. Bybit HTTP 403 (IP allowlist / API key). */
+  syncError?: string;
 };
 
 /** Closed linear PnL row from `/api/portfolio/closed-trades`. */
