@@ -9,6 +9,8 @@ import { portfolioRouter } from './routes/portfolio.js';
 import { tradeRouter } from './routes/trade.js';
 import { log } from './lib/logger.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const app = express();
 const allowedOrigins = env.FRONTEND_ORIGIN.split(',')
   .map((v) => v.trim())
@@ -18,7 +20,20 @@ const allowedOrigins = env.FRONTEND_ORIGIN.split(',')
 // express-rate-limit requires trust proxy to be enabled in that topology.
 app.set('trust proxy', 1);
 
-app.use(helmet());
+// In dev, default Helmet CSP includes `upgrade-insecure-requests` + HSTS; browsers may then
+// try https://localhost:8787 against a plain HTTP server → "invalid response". Relax for local HTTP only.
+app.use(
+  helmet({
+    strictTransportSecurity: isProd ? true : false,
+    contentSecurityPolicy: isProd
+      ? true
+      : {
+          directives: {
+            upgradeInsecureRequests: null,
+          },
+        },
+  }),
+);
 app.use(
   cors({
     origin(origin, callback) {
