@@ -8,7 +8,7 @@ export function tradeTimingLineAlpha(
   level: 'entry' | 'stop' | 'target' | 'liquidation',
   timingAlphaScale: number,
 ): number {
-  let a = timingAlphaScale;
+  const a = timingAlphaScale;
   if (level === 'stop' || level === 'liquidation') {
     return Math.max(0.42, a);
   }

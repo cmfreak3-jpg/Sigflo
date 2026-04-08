@@ -12,7 +12,23 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v == null || v.trim() === '' ? 'http://localhost:3999' : v.trim())),
-  DATABASE_URL: z.string().min(1),
+  /**
+   * Postgres connection string only (`postgres://` / `postgresql://`). Never the Supabase dashboard
+   * `https://…supabase.co` URL — that belongs in SUPABASE_URL.
+   */
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .refine(
+      (s) => {
+        const t = s.trim().toLowerCase();
+        return t.startsWith('postgres://') || t.startsWith('postgresql://');
+      },
+      {
+        message:
+          'DATABASE_URL must start with postgres:// or postgresql:// (Supabase → Project Settings → Database → connection string / pooler). Do not use the https:// project URL here — put that in SUPABASE_URL.',
+      },
+    ),
   /**
    * Optional override for pg TLS: `true` / `1` = verify chain; `false` / `0` = skip verify.
    * If unset, `db/index.ts` sets relaxed verify for remote hosts by default.
