@@ -1,5 +1,12 @@
 # Sigflo — Netlify production deploy
 # https://docs.netlify.com/configure-builds/file-based-configuration/
+#
+# Functions need API keys in the Netlify UI: Site settings → Environment variables
+# (e.g. OPENAI_API_KEY / AI_API_KEY for ai-suggest; see market-news-scan-core.mjs for news scan).
+# Local: root `.env`, `.env.local`, or `backend/.env` (merged by load-root-env.mjs).
+#
+# Subpath (e.g. app at sigflo.group/feed): set build env VITE_BASE=/feed/ (NOT /feed/api — that is wrong).
+# Below: /feed/assets/* and /feed/api/* so Vite’s /feed/ base works on Netlify.
 
 [build]
   command = "npm run build"
@@ -26,7 +33,89 @@
   status = 200
   force = true
 
-# React Router — direct hits to /feed, /trade, etc.
+# Same APIs when the app uses VITE_BASE=/feed/ (resolveAppApiPath → /feed/api/...)
+[[redirects]]
+  from = "/feed/api/ai/suggest"
+  to = "/.netlify/functions/ai-suggest"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/feed/api/ai/news-scan"
+  to = "/.netlify/functions/market-news-scan"
+  status = 200
+  force = true
+
+# Vite base=/feed/ still emits files under dist/assets/; map /feed/assets/* → /assets/*
+[[redirects]]
+  from = "/feed/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
+# Netlify Dev + Vite base=/feed/: preserve module/HMR requests before SPA fallback.
+[[redirects]]
+  from = "/feed/@vite/*"
+  to = "/@vite/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/feed/@react-refresh"
+  to = "/@react-refresh"
+  status = 200
+
+[[redirects]]
+  from = "/feed/src/*"
+  to = "/src/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/feed/node_modules/*"
+  to = "/node_modules/:splat"
+  status = 200
+
+# Netlify Dev (root requests): avoid rewriting Vite module/HMR URLs to index.html.
+[[redirects]]
+  from = "/@vite/*"
+  to = "/@vite/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/@react-refresh"
+  to = "/@react-refresh"
+  status = 200
+
+[[redirects]]
+  from = "/@id/*"
+  to = "/@id/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/@fs/*"
+  to = "/@fs/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/src/*"
+  to = "/src/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/node_modules/:splat"
+  status = 200
+
+# React Router under /feed (sigflo.group/feed, /feed/trade, …)
+[[redirects]]
+  from = "/feed"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/feed/*"
+  to = "/index.html"
+  status = 200
+
+# Site root or other paths (if this deploy is the whole site)
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -42,3 +131,12 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Baseline security (effective once the site is served over HTTPS). Enable “Force HTTPS” + SSL in Netlify → Domain management.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"

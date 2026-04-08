@@ -4,13 +4,10 @@
  * Merge root `.env.local` / `.env` / `backend/.env` into `process.env` only for keys not already set.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { resolve } from 'node:path';
 
 function parseEnvFile(text) {
-  for (const line of text.split(/\n')) {
+  for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const eq = trimmed.indexOf('=');
@@ -31,7 +28,8 @@ let didLoad = false;
 export function ensureRootEnvLoaded() {
   if (didLoad) return;
   didLoad = true;
-  const root = resolve(__dirname, '../../..');
+  // Netlify Dev starts from workspace root; avoids import.meta in CJS bundles.
+  const root = resolve(process.cwd());
   const candidates = [
     resolve(root, '.env.local'),
     resolve(root, '.env'),

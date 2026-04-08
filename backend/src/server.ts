@@ -10,9 +10,25 @@ import { tradeRouter } from './routes/trade.js';
 import { log } from './lib/logger.js';
 
 const app = express();
+const allowedOrigins = env.FRONTEND_ORIGIN.split(',')
+  .map((v) => v.trim())
+  .filter(Boolean);
+
+// Railway/Netlify sit behind a reverse proxy and set X-Forwarded-* headers.
+// express-rate-limit requires trust proxy to be enabled in that topology.
+app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(cors({ origin: env.FRONTEND_ORIGIN }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Non-browser requests (curl, health probes) may not send Origin.
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+  }),
+);
 app.use(express.json({ limit: '200kb' }));
 
 app.use(

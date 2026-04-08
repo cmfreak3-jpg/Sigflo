@@ -14,6 +14,10 @@ import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
 import LandingPage from '@/screens/LandingPage';
 
+const IS_SUBPATH_BASE = import.meta.env.BASE_URL !== '/';
+const FEED_ROUTE = IS_SUBPATH_BASE ? '/' : '/feed';
+const LANDING_ROUTE = IS_SUBPATH_BASE ? '/landing' : '/';
+
 export default function App() {
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
@@ -34,9 +38,9 @@ export default function App() {
       ) : (
         <ErrorBoundary key={location.pathname}>
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path={LANDING_ROUTE} element={<LandingPage />} />
       <Route element={<AppShell />}>
-        <Route path="/feed" element={<FeedScreen />} />
+        <Route path={FEED_ROUTE} element={<FeedScreen />} />
         <Route path="/markets" element={<MarketsScreen />} />
         <Route path="/bots" element={<BotsScreen />} />
         <Route path="/bots/:botId" element={<BotDetailScreen />} />
@@ -46,7 +50,7 @@ export default function App() {
         {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
       </Route>
       <Route path="/trade" element={<TradeScreen />} />
-      <Route path="*" element={<Navigate to="/feed" replace />} />
+      <Route path="*" element={<Navigate to={FEED_ROUTE} replace />} />
     </Routes>
         </ErrorBoundary>
       )}

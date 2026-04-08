@@ -12,6 +12,7 @@ import type {
   GroundedMarketContext,
 } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
+import { resolveAppApiPath } from '@/lib/appBasePath';
 import type { CryptoSignal } from '@/types/signal';
 
 export type AssistantAction = AiQuickAction;
@@ -118,7 +119,7 @@ function validateAndBuildRemoteQuickResponse(
 export async function requestAssistantSuggestion(req: AssistantRequest): Promise<AssistantResponseGrounded> {
   const local = buildLocalStructuredAnalysis(req.action, req.signal, req.status, req.tradeScore, req.context);
 
-  const proxyEndpoint = import.meta.env.VITE_AI_PROXY_ENDPOINT?.trim() || '/api/ai/suggest';
+  const proxyEndpoint = resolveAppApiPath(import.meta.env.VITE_AI_PROXY_ENDPOINT, '/api/ai/suggest');
   const allowBrowserOpenAi = import.meta.env.VITE_AI_ALLOW_BROWSER_OPENAI === 'true';
   const browserOpenAiEndpoint = import.meta.env.VITE_AI_ENDPOINT?.trim();
   const browserOpenAiKey = import.meta.env.VITE_AI_API_KEY?.trim();
@@ -315,7 +316,7 @@ export async function requestDeepMarketAnalysis(req: DeepAnalysisRequest): Promi
     return { ...f, source: 'local' };
   };
 
-  const proxyEndpoint = import.meta.env.VITE_AI_PROXY_ENDPOINT?.trim() || '/api/ai/suggest';
+  const proxyEndpoint = resolveAppApiPath(import.meta.env.VITE_AI_PROXY_ENDPOINT, '/api/ai/suggest');
   const allowBrowserOpenAi = import.meta.env.VITE_AI_ALLOW_BROWSER_OPENAI === 'true';
   const browserOpenAiEndpoint = import.meta.env.VITE_AI_ENDPOINT?.trim();
   const browserOpenAiKey = import.meta.env.VITE_AI_API_KEY?.trim();

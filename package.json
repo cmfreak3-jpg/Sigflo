@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "netlify dev",
+    "dev": "npx --yes netlify-cli dev",
     "dev:vite": "vite",
     "dev:backend": "npm run dev --prefix backend",
     "build": "tsc -b && vite build",

@@ -4,6 +4,7 @@ import { z } from 'zod';
 const envSchema = z.object({
   NODE_ENV: z.string().optional(),
   PORT: z.coerce.number().default(8787),
+  /** Comma-separated frontend origins allowed by CORS. */
   FRONTEND_ORIGIN: z.string().default('http://localhost:3999'),
   DATABASE_URL: z.string().min(1),
   /** Supabase project URL, e.g. https://xxxx.supabase.co (used for JWKS + issuer). */

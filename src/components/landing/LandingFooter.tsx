@@ -11,6 +11,7 @@ const FOOTER_LINKS = [
   { label: 'Screens', id: LANDING_SECTIONS.screens },
   { label: 'FAQ', id: LANDING_SECTIONS.faq },
 ] as const;
+const APP_ENTRY_PATH = import.meta.env.BASE_URL === '/' ? '/feed' : '/';
 
 export function LandingFooter() {
   return (
@@ -32,7 +33,7 @@ export function LandingFooter() {
                 {l.label}
               </button>
             ))}
-            <Link to="/feed" className="transition-colors hover:text-landing-text">
+            <Link to={APP_ENTRY_PATH} className="transition-colors hover:text-landing-text">
               Open app
             </Link>
           </div>

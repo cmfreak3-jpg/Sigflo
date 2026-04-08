@@ -1,3 +1,4 @@
+import { resolveAppApiPath } from '@/lib/appBasePath';
 import type { MarketRegime } from '@/types/aiGrounded';
 import type { MarketNewsArticle, MarketNewsScanResult, MarketNewsSummary } from '@/types/marketNewsScan';
 
@@ -121,7 +122,7 @@ export async function requestMarketNewsScan(req: {
   /** From trade scanner context when available; otherwise omit (server defaults to transition). */
   marketRegime?: MarketRegime;
 }): Promise<MarketNewsScanResult> {
-  const endpoint = import.meta.env.VITE_NEWS_SCAN_ENDPOINT?.trim() || '/api/ai/news-scan';
+  const endpoint = resolveAppApiPath(import.meta.env.VITE_NEWS_SCAN_ENDPOINT, '/api/ai/news-scan');
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 60_000);
   try {
