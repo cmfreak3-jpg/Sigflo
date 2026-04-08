@@ -69,6 +69,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(env.PORT, () => {
-  log('info', `Backend listening on :${env.PORT}`);
+const host = process.env.HOST ?? '0.0.0.0';
+app.listen(env.PORT, host, () => {
+  log('info', `Backend listening on ${host}:${env.PORT}`);
 });
