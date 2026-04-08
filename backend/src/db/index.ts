@@ -2,8 +2,11 @@ import { Pool } from 'pg';
 import { env } from '../config/env.js';
 
 /**
- * Node `pg` + Supabase pooler often throws "self-signed certificate in certificate chain"
- * unless `rejectUnauthorized` is false. Default that for Supabase URLs; allow override via env.
+ * Node `pg` often hits "self-signed certificate in certificate chain" against hosted Postgres
+ * (Supabase pooler, proxies, etc.) when `rejectUnauthorized` defaults to true.
+ *
+ * - Localhost Postgres: no `ssl` object (typical dev).
+ * - Remote URLs: default `rejectUnauthorized: false` unless `DATABASE_SSL_REJECT_UNAUTHORIZED=true`.
  */
 function pgSslOption(): { rejectUnauthorized: boolean } | undefined {
   const url = env.DATABASE_URL;
@@ -20,11 +23,7 @@ function pgSslOption(): { rejectUnauthorized: boolean } | undefined {
     return undefined;
   }
 
-  if (url.includes('supabase.co') || url.includes('pooler.supabase.com')) {
-    return { rejectUnauthorized: false };
-  }
-
-  return { rejectUnauthorized: true };
+  return { rejectUnauthorized: false };
 }
 
 const ssl = pgSslOption();
