@@ -65,9 +65,13 @@ export default function ProfileScreen() {
   }, [user?.email, displayName]);
 
   const canUseExchangeApi = authMode === 'dev' || Boolean(user);
+  const mexcIntegration = integrations.find((item) => item.exchange === 'mexc');
   const bybitIntegration = integrations.find((item) => item.exchange === 'bybit');
-  const connectedBybit = Boolean(bybitIntegration);
-  const lastSynced = bybitIntegration?.lastValidatedAt ? new Date(bybitIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+  const primaryIntegration = mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
+  const connectedExchangeLabel = primaryIntegration ? primaryIntegration.exchange.toUpperCase() : null;
+  const lastSynced = primaryIntegration?.lastValidatedAt
+    ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : null;
   const signalCount = signals.length;
   const winRate = useMemo(() => {
     if (closedTrades.length === 0) return '63%';
@@ -325,7 +329,9 @@ export default function ProfileScreen() {
             <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
               Pro
             </span>
-            <p className="text-[11px] font-semibold text-sigflo-accent">{connectedBybit ? 'Connected to Bybit' : 'No exchange connected'}</p>
+            <p className="text-[11px] font-semibold text-sigflo-accent">
+              {connectedExchangeLabel ? `Connected to ${connectedExchangeLabel}` : 'No exchange connected'}
+            </p>
             {lastSynced ? <p className="text-[10px] text-sigflo-muted">Last synced: {lastSynced}</p> : null}
           </div>
         </div>
