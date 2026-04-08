@@ -62,7 +62,7 @@ export function FeedScreen() {
             <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
               <span>
-                {loading ? 'Syncing' : mode} ·{' '}
+                {loading ? 'Syncing' : mode === 'MOCK' ? 'Offline' : mode} ·{' '}
                 {filter === 'all'
                   ? `${liveSignals.length} setups`
                   : `${signals.length} of ${liveSignals.length} setups`}
@@ -143,6 +143,11 @@ export function FeedScreen() {
 
         {/* Signal cards */}
         <div className="space-y-4">
+          {!loading && signals.length === 0 ? (
+            <p className="rounded-xl border border-white/[0.06] bg-black/20 px-3 py-4 text-center text-[13px] text-sigflo-muted">
+              No live setups yet — the scanner is running; stronger structure will appear as the market produces it.
+            </p>
+          ) : null}
           {signals.map((s) => (
             <SignalCard
               key={s.id}

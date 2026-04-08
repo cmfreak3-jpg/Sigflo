@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { mockSignals } from '@/data/mockSignals';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import {
   attachScoreTrends,
@@ -80,7 +79,7 @@ export function useMarketsScanner(): MarketsScannerState {
   }, [engine.connection]);
 
   const trackedRowsBare = useMemo(
-    () => buildTrackedScannerRows(engine.signals, mergedTickersBySymbol, mockSignals),
+    () => buildTrackedScannerRows(engine.signals, mergedTickersBySymbol),
     [engine.signals, mergedTickersBySymbol],
   );
   const moverRowsBare = useMemo(

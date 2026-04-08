@@ -107,7 +107,8 @@ function pickSignalForMarket(
   return buildSyntheticTrendingSignal(symbol, pair, ticker);
 }
 
-function buildTrackedFallbackSignal(pair: string, symbol: string): CryptoSignal {
+/** When the engine has not emitted for a tracked pair yet — live ticker still drives row prices. */
+export function buildTrackedFallbackSignal(pair: string, symbol: string): CryptoSignal {
   const breakdown: SetupScoreBreakdown = {
     trendAlignment: 12,
     momentumQuality: 9,
@@ -136,19 +137,17 @@ function buildTrackedFallbackSignal(pair: string, symbol: string): CryptoSignal 
 }
 
 /**
- * Fixed watchlist rows: engine signal by pair, else mock feed signal, else a light synthetic.
+ * Fixed watchlist rows: engine signal by pair, else a neutral shell until the detector fires.
  */
 export function buildTrackedScannerRows(
   engineSignals: CryptoSignal[],
   tickersBySymbol: Record<string, SymbolTicker>,
-  mockSignals: CryptoSignal[],
 ): MarketScannerRow[] {
   return TRACKED_SYMBOLS.map((symbol) => {
     const pair = symbolToPair(symbol);
     const ticker = tickersBySymbol[symbol];
     const fromEngine = engineSignals.find((s) => s.pair === pair);
-    const fromMock = mockSignals.find((s) => s.pair === pair);
-    const signal = fromEngine ?? fromMock ?? buildTrackedFallbackSignal(pair, symbol);
+    const signal = fromEngine ?? buildTrackedFallbackSignal(pair, symbol);
 
     const lastPrice = ticker != null ? ticker.lastPrice : Number.NaN;
     const change24hPct = ticker != null ? ticker.price24hPcnt * 100 : Number.NaN;

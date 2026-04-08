@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { USE_MOCK_TRADE_DATA } from '@/config/tradeEnv';
 import { getMockTradeForPair, getMockTradeForSignalId } from '@/data/mockTrade';
-import { mockSignals } from '@/data/mockSignals';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
 import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
@@ -29,7 +28,12 @@ import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTrad
 import { useThrottledLiveUnrealized } from '@/hooks/useThrottledLiveUnrealized';
 import { managePnlFromPrices, parseManageTradeContext } from '@/lib/manageTradeContext';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
-import { deriveMarketStatus, parseMarketStatusQuery } from '@/lib/marketScannerRows';
+import {
+  buildTrackedFallbackSignal,
+  deriveMarketStatus,
+  parseMarketStatusQuery,
+  symbolToPair,
+} from '@/lib/marketScannerRows';
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
 import { TRADE_CHART_LEVEL_COLORS } from '@/lib/tradeChartLevels';
@@ -207,22 +211,33 @@ export function TradeScreen() {
   const isManageMode = Boolean(requestedManage && manageCtx);
   const manageDataInvalid = requestedManage && manageCtx === null;
 
+  const { signals: liveSignals, liveTickersBySymbol } = useSignalEngine();
+
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
     if (fromQuery) return fromQuery;
-    return mockSignals.find((s) => s.id === signalId) ?? mockSignals[0];
-  }, [params, signalId]);
+    const direct = liveSignals.find((s) => s.id === signalId);
+    if (direct) return direct;
+    const legacy = resolveShellSignalForLegacyId(signalId, liveSignals);
+    if (legacy) return legacy;
+    if (liveSignals.length > 0) return liveSignals[0];
+    return buildTrackedFallbackSignal('BTC', 'BTCUSDT');
+  }, [params, signalId, liveSignals]);
 
-  /** Prefer catalog signal that matches `?pair=` so production levels align with that asset. */
+  /** Prefer live engine signal that matches `?pair=` so levels align with that asset. */
   const signalForTrade = useMemo(() => {
     const raw = pairFromQuery?.trim();
     if (raw) {
-      const u = raw.toUpperCase();
-      const fromList = mockSignals.find((s) => s.pair.trim().toUpperCase() === u);
-      if (fromList) return fromList;
+      const sym = pairBaseToLinearSymbol(raw);
+      const pair = symbolToPair(sym);
+      const fromLive = liveSignals.find(
+        (s) => s.pair.trim().toUpperCase() === pair || s.pair.trim().toUpperCase() === raw.toUpperCase().replace(/\s+/g, ''),
+      );
+      if (fromLive) return fromLive;
+      return buildTrackedFallbackSignal(pair, sym);
     }
     return selectedSignal;
-  }, [pairFromQuery, selectedSignal]);
+  }, [pairFromQuery, selectedSignal, liveSignals]);
 
   useEffect(() => {
     if (isManageMode || signalId.startsWith('pf-')) return;
@@ -272,10 +287,9 @@ export function TradeScreen() {
   const live = useLiveTradeMarket(liveSymbol, chartInterval);
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
 
-  const { signals, liveTickersBySymbol } = useSignalEngine();
   const liveMarketTickerItems = useMemo(
     () =>
-      signals.map((s) => {
+      liveSignals.map((s) => {
         const sym = pairBaseToLinearSymbol(s.pair);
         const t = liveTickersBySymbol[sym];
         return {
@@ -284,7 +298,7 @@ export function TradeScreen() {
           movePct: t != null && Number.isFinite(t.price24hPcnt) ? t.price24hPcnt * 100 : null,
         };
       }),
-    [signals, liveTickersBySymbol],
+    [liveSignals, liveTickersBySymbol],
   );
 
   const tradeBalance = useMemo(() => {
@@ -329,11 +343,11 @@ export function TradeScreen() {
   }, [linkedUtaRawMaxUsd]);
 
   const balanceForModel = useMemo(() => {
-    if (!tradeBalance) return 10_000;
+    if (!tradeBalance) return 0;
     if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
-    return 10_000;
+    return 0;
   }, [tradeBalance, linkedUtaRawMaxUsd]);
 
   const [tradePriceAnchor, setTradePriceAnchor] = useState<number | null>(null);
@@ -1940,6 +1954,18 @@ export function TradeScreen() {
       </div>
     </div>
   );
+}
+
+/** Legacy `/trade?signal=sig-1` URLs — map to tracked pairs when the feed has not emitted that id yet. */
+function resolveShellSignalForLegacyId(signalId: string, liveSignals: CryptoSignal[]): CryptoSignal | null {
+  const map: Record<string, { pair: string; symbol: string }> = {
+    'sig-1': { pair: 'BTC', symbol: 'BTCUSDT' },
+    'sig-2': { pair: 'ETH', symbol: 'ETHUSDT' },
+    'sig-3': { pair: 'SOL', symbol: 'SOLUSDT' },
+  };
+  const m = map[signalId];
+  if (!m) return null;
+  return liveSignals.find((s) => s.pair === m.pair) ?? buildTrackedFallbackSignal(m.pair, m.symbol);
 }
 
 function manageStripSizeLabel(ctx: ManageTradePositionContext): string {

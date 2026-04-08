@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { mockSignals } from '@/data/mockSignals';
 import { runScannerDeterminismDemo } from '@/engine/demoRunner';
 import { BybitWsClient } from '@/lib/bybitWsClient';
 import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
@@ -67,9 +66,9 @@ function upsertCandle(store: Candle[], next: Candle): Candle[] {
 
 export function useSignalEngine(): SignalEngineState {
   const [state, setState] = useState<Omit<SignalEngineState, 'liveTickersBySymbol' | 'setScannerTickerExtras'>>({
-    signals: mockSignals,
+    signals: [],
     loading: true,
-    mode: 'MOCK',
+    mode: 'REST',
     connection: 'disconnected',
   });
   const [liveTickersBySymbol, setLiveTickersBySymbol] = useState<Record<string, SymbolTicker>>({});
@@ -105,7 +104,7 @@ export function useSignalEngine(): SignalEngineState {
     function pushState(mode: SignalEngineState['mode'], connection: SignalEngineState['connection'], error?: string) {
       const ranked = Object.values(signalBookRef.current).sort((a, b) => b.setupScore - a.setupScore);
       setState({
-        signals: ranked.length > 0 ? ranked : mockSignals,
+        signals: ranked,
         loading: false,
         // Reflect transport/data source truth even when no setups are currently emitted.
         mode,

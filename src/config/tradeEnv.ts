@@ -1,5 +1,5 @@
 /**
- * Set `VITE_USE_MOCK_TRADE_DATA=true` in `.env.local` to use static `mockTrade` prices (demo only).
- * Production builds should leave this unset so entry / stop / target derive from the live feed + signal.
+ * Opt-in: `VITE_USE_MOCK_TRADE_DATA=true` uses static `mockTrade` on `/trade` for demos.
+ * Otherwise trade pricing uses live Bybit + signal / URL context.
  */
 export const USE_MOCK_TRADE_DATA = import.meta.env.VITE_USE_MOCK_TRADE_DATA === 'true';
