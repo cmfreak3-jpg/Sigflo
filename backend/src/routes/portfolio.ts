@@ -51,13 +51,19 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
           accountBreakdown,
         };
       } catch (error) {
-        log('warn', 'Portfolio snapshot failed.', { exchange: integration.exchange, error: String(error) });
+        const msg = error instanceof Error ? error.message : String(error);
+        logPortfolioWarnThrottled(
+          `snap:${integration.exchange}:${msg.slice(0, 120)}`,
+          'Portfolio snapshot failed.',
+          { exchange: integration.exchange, error: msg },
+        );
         return {
           exchange: integration.exchange,
           status: 'error',
           balances: [],
           positions: [],
           accountBreakdown: null,
+          syncError: msg,
         };
       }
     }),
