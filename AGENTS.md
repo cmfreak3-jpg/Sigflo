@@ -27,11 +27,22 @@ See `package.json` scripts:
 
 ### Caveats
 
-- **ESLint config missing:** The repo declares ESLint 9 as a dev dependency but does not include an `eslint.config.js` (required by ESLint v9). Running `npm run lint` will fail until this config is added.
+- **ESLint:** `npm run lint` works (ESLint 9 flat config in `eslint.config.js`). Expect ~30 warnings (react-hooks/exhaustive-deps, react-refresh); 0 errors.
 - **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
 - Optional env vars are documented in `.env.example` (`VITE_SUPABASE_*`, `VITE_BACKEND_API_BASE`, etc.).
 - **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: 'all'` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
 - **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. Feeds may show offline / degraded until a reachable path exists — this is expected in some dev setups.
+
+### Netlify production deploy
+
+- **Auto-deploy:** pushing to `main` triggers a build on Netlify automatically (see `docs/NETLIFY.md`).
+- **CLI deploy (requires secrets `NETLIFY_AUTH_TOKEN` + `NETLIFY_SITE_ID`):**
+  ```bash
+  npm run build
+  npx netlify-cli deploy --prod --dir=dist --functions=netlify/functions
+  ```
+  The CLI picks up `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID` from the environment. Production URL: **https://www.sigflo.group**.
+- Full env-var reference and one-time setup: see `docs/NETLIFY.md`.
 
 ### Trade chart plot height (do not duplicate)
 
