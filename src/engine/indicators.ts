@@ -96,6 +96,8 @@ export function deriveIndicatorSnapshot(candles: Candle[]): IndicatorSnapshot {
     localSwingHigh: swingHigh,
     localSwingLow: swingLow,
     breakoutDistanceAtr: clamp((swingHigh - close) / lastAtr, -10, 10),
+    breakdownDistanceAtr: clamp((close - swingLow) / lastAtr, -10, 10),
     pullbackDepthAtr: clamp((lastEma20 - close) / lastAtr, -10, 10),
+    bounceDepthAtr: clamp((close - lastEma20) / lastAtr, -10, 10),
   };
 }

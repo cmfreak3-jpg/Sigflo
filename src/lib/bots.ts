@@ -2,6 +2,9 @@ import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import { uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import type { CryptoSignal } from '@/types/signal';
 
+/** Bots home “Recent Activity” list (pair + status rows). */
+export const BOTS_RECENT_ACTIVITY_MAX = 10;
+
 export type BotStatus = 'active' | 'scanning' | 'paused';
 
 export type BotAgent = {

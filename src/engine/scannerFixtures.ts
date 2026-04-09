@@ -36,7 +36,7 @@ function buildTrendSeries(
 }
 
 function compressTo5m(candles15m: Candle[]): Candle[] {
-  // Mock convenience: we can reuse 15m structure while keeping deterministic values.
+  // Derive 5m timestamps from 15m bars for fixture parity tests.
   return candles15m.map((c) => ({ ...c, ts: c.ts - 10 * 60_000 }));
 }
 
@@ -81,7 +81,8 @@ function makeSeriesForSymbol(symbol: ScannerSymbol): CandleSeriesByInterval {
   }
 }
 
-export function buildMockScannerInput(): Record<string, CandleSeriesByInterval> {
+/** Deterministic candle sets for scanner lab / dev determinism checks (not live Bybit data). */
+export function buildScannerLabFixtureInput(): Record<string, CandleSeriesByInterval> {
   const out: Record<string, CandleSeriesByInterval> = {};
   for (const symbol of SCANNER_UNIVERSE) out[symbol] = makeSeriesForSymbol(symbol);
   return out;

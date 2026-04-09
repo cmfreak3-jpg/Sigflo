@@ -43,7 +43,7 @@ type ActivePositionCardProps = {
   exitStrategyLabel: string;
   scenarioSummary: string;
   /** Exchange-backed position uses Bybit uPnL wording. */
-  executionSource?: 'paper' | 'exchange';
+  executionSource?: 'exchange';
   /** When set (e.g. from Bybit snapshot), show exchange unrealized instead of mark-derived. */
   exchangeUnrealizedUsd?: number | null;
 };
@@ -55,7 +55,7 @@ export function ActivePositionCard({
   exitAiModeLabel,
   exitStrategyLabel,
   scenarioSummary,
-  executionSource = 'paper',
+  executionSource = 'exchange',
   exchangeUnrealizedUsd,
 }: ActivePositionCardProps) {
   const prevPnlRef = useRef<number | null>(null);
@@ -142,7 +142,7 @@ export function ActivePositionCard({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 py-2">
         <div className="min-w-0">
           <p className="text-[7px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">
-            {executionSource === 'exchange' ? 'Unrealized (Bybit)' : 'Unrealized (practice)'}
+            Unrealized (Bybit)
           </p>
           <motion.p
             initial={{ opacity: 0.88 }}

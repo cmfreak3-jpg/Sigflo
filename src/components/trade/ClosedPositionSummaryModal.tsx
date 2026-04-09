@@ -46,7 +46,7 @@ export function ClosedPositionSummaryModal({ summary, onDismiss }: ClosedPositio
             exit={{ opacity: 0, scale: 0.96, x: '-50%', y: 'calc(-50% + 8px)' }}
           >
             <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-cyan-200/80">
-              {summary.execution === 'exchange' ? 'Order sent' : 'Practice close'}
+              Order sent
             </p>
             <h2 id="closed-sum-title" className="mt-1 text-lg font-bold text-white">
               {fullClose ? 'Position closed' : 'Partial close'}
@@ -101,16 +101,10 @@ export function ClosedPositionSummaryModal({ summary, onDismiss }: ClosedPositio
               </div>
             </dl>
 
-            {summary.execution === 'exchange' ? (
-              <p className="mt-3 text-[11px] leading-relaxed text-sigflo-muted">
-                Fills and fees are set by the exchange. This summary uses the last mark before your close was sent —
-                check Bybit for realized P&amp;L.
-              </p>
-            ) : (
-              <p className="mt-3 text-[11px] leading-relaxed text-sigflo-muted">
-                Demo only — not executed on your exchange. Use the same plan when you exit on the venue.
-              </p>
-            )}
+            <p className="mt-3 text-[11px] leading-relaxed text-sigflo-muted">
+              Fills and fees are set by the exchange. This summary uses the last mark before your close was sent — check
+              Bybit for realized P&amp;L.
+            </p>
 
             <button
               type="button"

@@ -15,6 +15,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # If the site has NODE_ENV=production, npm omits devDependencies and `npm run build` fails
+  # (`tsc` / `vite` not found). Keep devDeps for the build; Vite still emits a production bundle.
+  NPM_CONFIG_PRODUCTION = "false"
 
 # Bundle serverless functions (ESM imports from netlify/functions/lib/*).
 [functions]

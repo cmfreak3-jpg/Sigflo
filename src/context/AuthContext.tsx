@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
@@ -44,8 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!supabase) {
           throw new Error('Supabase is not configured (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).');
         }
-        const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-        const redirectTo = `${window.location.origin}${base}/profile`;
+        const redirectTo = getOAuthRedirectToProfile();
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {

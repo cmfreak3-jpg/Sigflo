@@ -3,7 +3,7 @@ import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 /** Same key as `TradeScreen` — feed / markets mini charts read this to match the trade chart. */
 export const TRADE_CHART_INTERVAL_STORAGE_KEY = 'sigflo.trade.chartInterval';
 
-const VALID = new Set<TradeChartInterval>(['5', '15', '60', '240', 'D', 'W']);
+const VALID = new Set<TradeChartInterval>(['1', '5', '15', '60', '240', 'D', 'W']);
 
 export function parseTradeChartInterval(raw: string | null | undefined): TradeChartInterval | null {
   if (raw && VALID.has(raw as TradeChartInterval)) return raw as TradeChartInterval;
@@ -21,6 +21,7 @@ export function tradeChartIntervalShortLabel(i: TradeChartInterval): string {
   if (i === 'W') return '1W';
   if (i === '60') return '1h';
   if (i === '240') return '4h';
+  if (i === '1') return '1m';
   return `${i}m`;
 }
 

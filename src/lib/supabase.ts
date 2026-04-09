@@ -8,4 +8,13 @@ export function isSupabaseConfigured(): boolean {
 }
 
 export const supabase: SupabaseClient | null =
-  url && anonKey ? createClient(url, anonKey, { auth: { persistSession: true, autoRefreshToken: true } }) : null;
+  url && anonKey
+    ? createClient(url, anonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          /** Query `code=` survives apex↔www redirects; implicit `#access_token` often does not. */
+          flowType: 'pkce',
+        },
+      })
+    : null;

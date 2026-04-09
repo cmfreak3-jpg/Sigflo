@@ -2,6 +2,8 @@ export type AssistedExitConfirmBarProps = {
   headline: string;
   detail: string;
   onConfirm: () => void;
+  /** Exit assisted mode without confirming (e.g. position already closed on the exchange). */
+  onDismiss?: () => void;
 };
 
 export function AssistedExitConfirmBar(props: AssistedExitConfirmBarProps) {
@@ -17,6 +19,15 @@ export function AssistedExitConfirmBar(props: AssistedExitConfirmBarProps) {
       >
         Confirm prepared exit
       </button>
+      {props.onDismiss ? (
+        <button
+          type="button"
+          onClick={props.onDismiss}
+          className="mt-2 w-full rounded-lg py-1.5 text-[10px] font-semibold text-sigflo-muted transition hover:bg-white/[0.04] hover:text-white"
+        >
+          Dismiss — switch Exit AI to Manual
+        </button>
+      ) : null}
       <p className="mt-1.5 text-center text-[8px] text-sigflo-muted">Still executes on your exchange — one tap to acknowledge.</p>
     </div>
   );

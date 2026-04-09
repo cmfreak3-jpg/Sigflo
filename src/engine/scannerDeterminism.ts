@@ -1,20 +1,20 @@
-import { runMockScanner } from '@/engine/mockScannerRunner';
-import { buildMockScannerInput } from '@/engine/mockFixtures';
+import { runScannerPipeline } from '@/engine/scannerPipeline';
+import { buildScannerLabFixtureInput } from '@/engine/scannerFixtures';
 import type { EmittedSignalStateMap, SignalCandidate } from '@/engine/types';
 
-export interface ScannerDemoFrame {
+export interface ScannerDeterminismFrame {
   run: number;
   acceptedCount: number;
   candidateCount: number;
   accepted: Array<Pick<SignalCandidate, 'symbol' | 'setupType' | 'setupScore' | 'tags'>>;
 }
 
-export interface ScannerDemoResult {
-  firstPass: ScannerDemoFrame;
-  secondPass: ScannerDemoFrame;
+export interface ScannerDeterminismResult {
+  firstPass: ScannerDeterminismFrame;
+  secondPass: ScannerDeterminismFrame;
 }
 
-function toFrame(run: number, accepted: SignalCandidate[], allCandidates: SignalCandidate[]): ScannerDemoFrame {
+function toFrame(run: number, accepted: SignalCandidate[], allCandidates: SignalCandidate[]): ScannerDeterminismFrame {
   return {
     run,
     acceptedCount: accepted.length,
@@ -29,19 +29,19 @@ function toFrame(run: number, accepted: SignalCandidate[], allCandidates: Signal
 }
 
 /**
- * Deterministic dry-run helper for local development.
+ * Deterministic dry-run for local development (scanner pipeline + filter state).
  * - Run 1: emits valid signals
- * - Run 2: demonstrates cooldown/dedup behavior
+ * - Run 2: cooldown / dedup behavior
  */
-export function runScannerDeterminismDemo(): ScannerDemoResult {
-  const marketBySymbol = buildMockScannerInput();
-  const first = runMockScanner({
+export function runScannerDeterminismCheck(): ScannerDeterminismResult {
+  const marketBySymbol = buildScannerLabFixtureInput();
+  const first = runScannerPipeline({
     marketBySymbol,
     filterConfig: { minSetupScore: 55, cooldownMs: 45 * 60 * 1000, minScoreImprovement: 8 },
   });
 
   const state: EmittedSignalStateMap = first.nextState;
-  const second = runMockScanner({
+  const second = runScannerPipeline({
     marketBySymbol,
     previousState: state,
     filterConfig: { minSetupScore: 55, cooldownMs: 45 * 60 * 1000, minScoreImprovement: 8 },
@@ -52,4 +52,3 @@ export function runScannerDeterminismDemo(): ScannerDemoResult {
     secondPass: toFrame(2, second.acceptedSignals, second.allCandidates),
   };
 }
-

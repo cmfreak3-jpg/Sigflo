@@ -13,6 +13,7 @@ functions = "C:\\dev\\Sigflo\\netlify\\functions"
 
 [build.environment]
 NODE_VERSION = "22"
+NPM_CONFIG_PRODUCTION = "false"
 
 [build.processing]
 

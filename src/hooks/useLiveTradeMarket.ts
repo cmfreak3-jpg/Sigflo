@@ -5,8 +5,8 @@ import { fetchKlines, fetchTickers } from '@/services/bybit/client';
 import type { Candle } from '@/types/market';
 import type { TradeChartCandle } from '@/types/trade';
 
-export type TradeChartInterval = '5' | '15' | '60' | '240' | 'D' | 'W';
-const SUPPORTED_INTERVALS: TradeChartInterval[] = ['5', '15', '60', '240', 'D', 'W'];
+export type TradeChartInterval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
+const SUPPORTED_INTERVALS: TradeChartInterval[] = ['1', '5', '15', '60', '240', 'D', 'W'];
 
 export type LiveTradeTickSnapshot = {
   lastPrice: number;
@@ -27,7 +27,7 @@ type LiveTradeState = {
   chartCandles?: TradeChartCandle[];
   loadingInterval: boolean;
   lastUpdateTs?: number;
-  mode: 'REST' | 'WS' | 'MOCK';
+  mode: 'REST' | 'WS' | 'OFFLINE';
   connection: 'connected' | 'reconnecting' | 'disconnected';
 };
 
@@ -75,7 +75,7 @@ function toTradeCandles(candles: Candle[]): TradeChartCandle[] {
 export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval): LiveTradeMarketResult {
   const [state, setState] = useState<LiveTradeState>({
     loadingInterval: true,
-    mode: 'MOCK',
+    mode: 'OFFLINE',
     connection: 'disconnected',
   });
 
@@ -86,6 +86,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
   const chartImmediateRef = useRef(false);
 
   const candlesRef = useRef<Record<TradeChartInterval, Candle[]>>({
+    '1': [],
     '5': [],
     '15': [],
     '60': [],
@@ -160,7 +161,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
   useEffect(() => {
     let cancelled = false;
     readyRef.current = false;
-    candlesRef.current = { '5': [], '15': [], '60': [], '240': [], D: [], W: [] };
+    candlesRef.current = { '1': [], '5': [], '15': [], '60': [], '240': [], D: [], W: [] };
     tickSnapshotRef.current = null;
     lastPriceRef.current = undefined;
     pendingUiRef.current = false;
@@ -171,7 +172,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
     async function bootstrap(reason: 'startup' | 'reconnect') {
       try {
         console.log(`[Sigflo][Trade] REST bootstrap (${reason}) ${symbol}`);
-        const [c5, c15, c60, c240, cD, cW, tickers] = await Promise.all([
+        const [c1, c5, c15, c60, c240, cD, cW, tickers] = await Promise.all([
+          fetchKlines(symbol, '1', 200),
           fetchKlines(symbol, '5', 140),
           fetchKlines(symbol, '15', 140),
           fetchKlines(symbol, '60', 140),
@@ -181,6 +183,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
           fetchTickers([symbol]),
         ]);
         candlesRef.current = {
+          '1': c1,
           '5': c5,
           '15': c15,
           '60': c60,
@@ -221,7 +224,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         if (cancelled) return;
         tickSnapshotRef.current = null;
         lastPriceRef.current = undefined;
-        setState((prev) => ({ ...prev, loadingInterval: false, mode: 'MOCK', connection: 'disconnected' }));
+        setState((prev) => ({ ...prev, loadingInterval: false, mode: 'OFFLINE', connection: 'disconnected' }));
       }
     }
 
@@ -249,8 +252,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
           ...prev,
           connection,
           mode:
-            prev.mode === 'MOCK'
-              ? 'MOCK'
+            prev.mode === 'OFFLINE'
+              ? 'OFFLINE'
               : connection === 'connected'
                 ? 'WS'
                 : connection === 'reconnecting'

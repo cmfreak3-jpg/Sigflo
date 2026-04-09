@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
-import { runScannerDeterminismDemo } from '@/engine/demoRunner';
-import type { ScannerDemoFrame } from '@/engine/demoRunner';
+import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
+import type { ScannerDeterminismFrame } from '@/engine/scannerDeterminism';
 
-function PassCard({ frame, title }: { frame: ScannerDemoFrame; title: string }) {
+function PassCard({ frame, title }: { frame: ScannerDeterminismFrame; title: string }) {
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -51,7 +51,7 @@ export function EngineDebugScreen() {
   const navigate = useNavigate();
   const [rerunTick, setRerunTick] = useState(0);
   const [lastRerunAt, setLastRerunAt] = useState(() => new Date());
-  const demo = useMemo(() => runScannerDeterminismDemo(), [rerunTick]);
+  const determinism = useMemo(() => runScannerDeterminismCheck(), [rerunTick]);
 
   return (
     <div className="space-y-4 pb-6">
@@ -76,7 +76,7 @@ export function EngineDebugScreen() {
               }}
               className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/15"
             >
-              Rerun Demo
+              Rerun check
             </button>
             <Link
               to="/scanner-lab"
@@ -95,8 +95,8 @@ export function EngineDebugScreen() {
         </p>
       </header>
 
-      <PassCard frame={demo.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
-      <PassCard frame={demo.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
+      <PassCard frame={determinism.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
+      <PassCard frame={determinism.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
     </div>
   );
 }

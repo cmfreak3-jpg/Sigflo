@@ -1,19 +1,19 @@
 import {
-  deriveIndicators,
-  detectBreakoutPressure,
-  detectOverextendedWarning,
-  detectPullbackContinuation,
+  DEFAULT_DETECTOR_OPTIONS,
+  runScannerLabEngineEvaluations,
+  type DerivedIndicators,
+  type DetectorEvaluation,
+  type DetectorOptions,
+  type SignalCandidate,
 } from '@/lib/detectors';
 import { getSetupScoreLabel } from '@/lib/setupScore';
-import type { DerivedIndicators, DetectorEvaluation, SignalCandidate } from '@/lib/detectors';
-import type { DetectorOptions } from '@/lib/detectors';
 import type { PlaybackCandle } from '@/types/market';
 import type { SetupScoreLabel } from '@/types/signal';
 import {
   breakoutScenario5m,
   overextendedScenario5m,
   pullbackScenario5m,
-} from '@/data/mockCandles';
+} from '@/data/scannerLabCandles';
 
 export type ScenarioKey = 'breakout' | 'pullback' | 'overextended';
 
@@ -69,15 +69,11 @@ type CooldownState = {
 
 const DEFAULT_CONFIG: PlaybackConfig = {
   symbol: 'SOLUSDT',
-  windowSize: 50,
+  windowSize: 120,
   minSetupScore: 55,
   cooldownCandles: 4,
   minScoreImprovement: 8,
-  detectorOptions: {
-    useVolumeFilter: true,
-    useRsiFilter: true,
-    compressionThreshold: 1.4,
-  },
+  detectorOptions: { ...DEFAULT_DETECTOR_OPTIONS },
 };
 
 const SCENARIO_DATA: Record<ScenarioKey, { symbol: string; candles: PlaybackCandle[] }> = {
@@ -98,7 +94,8 @@ function compactReason(reasons: string[]): string {
   return clean.join(' + ');
 }
 
-export class MockPlaybackController {
+/** Step-through controller for Scanner Lab (fixture candles, isolated from live transport). */
+export class CandlePlaybackController {
   private series: PlaybackCandle[];
   private currentIndex: number;
   private config: PlaybackConfig;
@@ -137,12 +134,7 @@ export class MockPlaybackController {
     const currentCandle = visibleCandles.at(-1);
     if (!currentCandle) return null;
 
-    const indicators = deriveIndicators(visibleCandles);
-    const evaluations = [
-      detectBreakoutPressure(visibleCandles, indicators, this.config.detectorOptions),
-      detectPullbackContinuation(visibleCandles, indicators, this.config.detectorOptions),
-      detectOverextendedWarning(visibleCandles, indicators, this.config.detectorOptions),
-    ];
+    const { indicators, evaluations } = runScannerLabEngineEvaluations(this.config.symbol, visibleCandles);
 
     const newSignals: PlaybackSignal[] = [];
     for (const e of evaluations) {
@@ -196,9 +188,8 @@ function buildState(scenario: ScenarioKey, candles: PlaybackCandle[], config: Pl
 }
 
 /**
- * Session factory for mock playback harness.
- * This is intentionally isolated from live data transport. Bybit REST/WS can later feed the same
- * candle arrays into this exact step pipeline for parity testing.
+ * Session factory for Scanner Lab playback.
+ * Isolated from live transport; Bybit REST/WS can feed the same candle arrays for parity testing.
  */
 export function createPlaybackSession(input?: {
   scenario?: ScenarioKey;
@@ -254,12 +245,7 @@ export function stepForward(session: PlaybackSession): PlaybackSession {
   const currentCandle = visibleCandles.at(-1);
   if (!currentCandle) return session;
 
-  const indicators = deriveIndicators(visibleCandles);
-  const evaluations = [
-    detectBreakoutPressure(visibleCandles, indicators, session.config.detectorOptions),
-    detectPullbackContinuation(visibleCandles, indicators, session.config.detectorOptions),
-    detectOverextendedWarning(visibleCandles, indicators, session.config.detectorOptions),
-  ];
+  const { indicators, evaluations } = runScannerLabEngineEvaluations(session.config.symbol, visibleCandles);
 
   const nextCooldown = { ...session.cooldownRegistry };
   const newSignals: PlaybackSignal[] = [];

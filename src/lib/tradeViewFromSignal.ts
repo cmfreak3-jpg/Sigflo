@@ -74,6 +74,43 @@ function deriveLevels(side: TradeSide, ref: number, setupScore: number): { stop:
 }
 
 /** Long: stop < entry < target. Short: target < entry < stop. Fixes bad deep links / mixed data. */
+/**
+ * When the exchange omits SL/TP on the position payload, keep plan levels only if they sit on the correct
+ * side of the **actual** entry for the open position; otherwise derive a band from `setupScore`.
+ * Does not replace the other leg (unlike `coerceStopTargetToSide`), so a valid Bybit TP can stay paired with a fixed stop.
+ */
+export function ensureStopForOpenPosition(
+  positionSide: TradeSide,
+  entry: number,
+  planStop: number,
+  setupScore: number,
+): number {
+  if (entry > 0 && Number.isFinite(entry)) {
+    if (Number.isFinite(planStop) && planStop > 0) {
+      const ok = positionSide === 'long' ? planStop < entry : planStop > entry;
+      if (ok) return planStop;
+    }
+    return deriveLevels(positionSide, entry, setupScore).stop;
+  }
+  return Number.isFinite(planStop) && planStop > 0 ? planStop : NaN;
+}
+
+export function ensureTargetForOpenPosition(
+  positionSide: TradeSide,
+  entry: number,
+  planTarget: number,
+  setupScore: number,
+): number {
+  if (entry > 0 && Number.isFinite(entry)) {
+    if (Number.isFinite(planTarget) && planTarget > 0) {
+      const ok = positionSide === 'long' ? planTarget > entry : planTarget < entry;
+      if (ok) return planTarget;
+    }
+    return deriveLevels(positionSide, entry, setupScore).target;
+  }
+  return Number.isFinite(planTarget) && planTarget > 0 ? planTarget : NaN;
+}
+
 export function coerceStopTargetToSide(
   side: TradeSide,
   entry: number,

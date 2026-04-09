@@ -56,7 +56,7 @@ export interface TradeViewModel {
   stopLossUsd: number;
   riskReward: number;
   aiInsight: AiInsight;
-  /** Mock series for chart (normalized 0–1 y values, oldest → newest) */
+  /** Normalized 0–1 sparkline series for chart mini-plot (oldest → newest). */
   priceSeries: number[];
   /** Optional OHLC series for real candlestick rendering (oldest -> newest). */
   chartCandles?: TradeChartCandle[];

@@ -1,4 +1,12 @@
-import { detectBreakoutPressure, detectOverextendedWarning, detectPullbackContinuation } from '@/engine/detectors';
+import {
+  detectBreakdownPressure,
+  detectBreakoutPressure,
+  detectOverextendedShort,
+  detectOverextendedWarning,
+  detectPullbackContinuation,
+  detectPullbackContinuationShort,
+  pickBestDirectionalPair,
+} from '@/engine/detectors';
 import { applySignalQualityControls } from '@/engine/filtering';
 import { deriveIndicatorSnapshot } from '@/engine/indicators';
 import type {
@@ -27,11 +35,10 @@ const DEFAULT_FILTER_CONFIG: ScannerFilterConfig = {
 };
 
 /**
- * Rules-first scanner runner.
- * - Deterministic: all outputs depend only on candle data + explicit thresholds.
- * - AI is intentionally excluded here; it should consume explanationFacts after signal creation.
+ * Rules-first scanner pipeline (deterministic: outputs depend only on candles + thresholds).
+ * Live path uses Bybit REST/WS data into the same shapes; AI consumes explanationFacts after signal creation.
  */
-export function runMockScanner(input: ScannerInput): ScannerOutput {
+export function runScannerPipeline(input: ScannerInput): ScannerOutput {
   const cfg = { ...DEFAULT_FILTER_CONFIG, ...input.filterConfig };
   const allCandidates: SignalCandidate[] = [];
 
@@ -42,9 +49,12 @@ export function runMockScanner(input: ScannerInput): ScannerOutput {
     const indicators = deriveIndicatorSnapshot(candles15m);
     const detectorInput = { symbol, candles: candles15m, indicators, lastCandleClosed: lastClosed };
     const candidates = [
-      detectBreakoutPressure(detectorInput),
-      detectPullbackContinuation(detectorInput),
-      detectOverextendedWarning(detectorInput),
+      pickBestDirectionalPair(detectBreakoutPressure(detectorInput), detectBreakdownPressure(detectorInput)),
+      pickBestDirectionalPair(
+        detectPullbackContinuation(detectorInput),
+        detectPullbackContinuationShort(detectorInput),
+      ),
+      pickBestDirectionalPair(detectOverextendedWarning(detectorInput), detectOverextendedShort(detectorInput)),
     ].filter((s): s is SignalCandidate => Boolean(s));
     allCandidates.push(...candidates);
   }
@@ -61,17 +71,3 @@ export function runMockScanner(input: ScannerInput): ScannerOutput {
     nextState,
   };
 }
-
-/**
- * Future integration points (Bybit):
- * 1) REST backfill:
- *    - fetch recent klines for each symbol/interval
- *    - map to CandleSeriesByInterval and call runMockScanner()
- * 2) WebSocket live updates:
- *    - subscribe to kline streams
- *    - append/update in-memory candle stores per symbol+interval
- *    - run scanner only when a candle closes (isClosed=true)
- * 3) AI explanation layer:
- *    - send SignalCandidate.explanationFacts to a narration endpoint
- *    - keep rule output immutable; AI only provides wording
- */

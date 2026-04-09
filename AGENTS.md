@@ -29,9 +29,9 @@ See `package.json` scripts:
 
 - **ESLint config missing:** The repo declares ESLint 9 as a dev dependency but does not include an `eslint.config.js` (required by ESLint v9). Running `npm run lint` will fail until this config is added.
 - **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
-- Optional env vars are documented in `.env.example` (`VITE_SUPABASE_*`, `VITE_BACKEND_API_BASE`, `VITE_USE_MOCK_TRADE_DATA`, etc.). Production trade levels use the live market feed unless `VITE_USE_MOCK_TRADE_DATA=true`.
+- Optional env vars are documented in `.env.example` (`VITE_SUPABASE_*`, `VITE_BACKEND_API_BASE`, etc.).
 - **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: 'all'` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
-- **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. It falls back to mock data gracefully — this is expected behavior.
+- **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. Feeds may show offline / degraded until a reachable path exists — this is expected in some dev setups.
 
 ### Trade chart plot height (do not duplicate)
 

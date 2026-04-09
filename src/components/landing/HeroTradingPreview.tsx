@@ -25,7 +25,7 @@ function MiniChart() {
   );
 }
 
-export function HeroTradingMockup() {
+export function HeroTradingPreview() {
   return (
     <div className="relative mx-auto w-full max-w-[340px] lg:max-w-[380px]">
       <motion.div

@@ -42,7 +42,11 @@ export interface IndicatorSnapshot {
   localSwingHigh: number;
   localSwingLow: number;
   breakoutDistanceAtr: number;
+  /** Distance above local swing low in ATR units (small = pressing support / breakdown setup). */
+  breakdownDistanceAtr: number;
   pullbackDepthAtr: number;
+  /** (close − ema20) / ATR — positive when price bounces above mean in a downtrend. */
+  bounceDepthAtr: number;
 }
 
 export interface ExplanationFacts {

@@ -105,7 +105,7 @@ const overextendedCore: PlaybackCandle[] = [
 ];
 
 export const breakoutScenario5m = prependWarmup(breakoutCore, {
-  count: 18,
+  count: 48,
   startPrice: 96,
   drift: 0.16,
   spread: 0.55,
@@ -121,7 +121,7 @@ export const pullbackScenario5m = prependWarmup(pullbackCore, {
 });
 
 export const overextendedScenario5m = prependWarmup(overextendedCore, {
-  count: 16,
+  count: 48,
   startPrice: 45,
   drift: 0.18,
   spread: 0.45,

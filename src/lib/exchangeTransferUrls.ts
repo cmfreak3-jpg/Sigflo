@@ -6,6 +6,12 @@
 /** Primary Assets entry (user hub). */
 export const BYBIT_APP_ASSETS_HOME_HREF = 'https://www.bybit.com/user/assets/home/';
 
+/** Logged-in deposit / top-up flow (redirects to login if needed). */
+export const BYBIT_DEPOSIT_HREF = 'https://www.bybit.com/user/assets/deposit';
+
+/** MEXC spot / funding deposit (logged-in). */
+export const MEXC_DEPOSIT_HREF = 'https://www.mexc.com/assets/deposit';
+
 /** Alternate assets route (exchange index) when the `/app/` hub misbehaves. */
 export const BYBIT_USER_ASSETS_EXCHANGE_HREF = 'https://www.bybit.com/user/assets/exchange/index';
 

@@ -6,7 +6,7 @@ const levelTint: Record<RiskLevel, string> = {
   High: 'bg-rose-400/90 shadow-[0_0_6px_rgba(251,113,133,0.45)]',
 };
 
-/** Five-segment strip; fill count derived from meter % (mockup-style). */
+/** Five-segment strip; fill count derived from meter %. */
 export function RiskSegmentMeter({ pct, level }: { pct: number; level: RiskLevel }) {
   const filled = Math.min(5, Math.max(1, Math.round((pct / 100) * 5)));
   return (

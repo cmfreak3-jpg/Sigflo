@@ -27,6 +27,32 @@ function safeJsonParse(value) {
   }
 }
 
+/** Human-readable error when the chat-completions request is not OK (still returns articles to the client). */
+async function formatAiHttpError(response) {
+  const status = response.status;
+  let apiMsg = '';
+  try {
+    const raw = await response.text();
+    const j = safeJsonParse(raw);
+    const msg = j?.error?.message ?? j?.message;
+    if (typeof msg === 'string') {
+      apiMsg = msg.replace(/\s+/g, ' ').trim().slice(0, 280);
+    }
+  } catch {
+    /* ignore */
+  }
+  const hint =
+    status === 401 || status === 403
+      ? ' Check OPENAI_API_KEY (Netlify env or local .env) and redeploy / restart dev.'
+      : status === 429
+        ? ' Rate limited — try again in a moment.'
+        : status === 404
+          ? ' Check OPENAI_API_ENDPOINT / AI_ENDPOINT matches your provider (default is OpenAI v1/chat/completions).'
+          : '';
+  if (apiMsg) return `AI request failed (HTTP ${status}): ${apiMsg}`;
+  return `AI request failed (HTTP ${status}).${hint}`;
+}
+
 function decodeBasicEntities(s) {
   return String(s)
     .replace(/&amp;/g, '&')
@@ -392,9 +418,10 @@ export async function runMarketNewsScan(rawBody, env) {
     clearTimeout(timeout);
 
     if (!response.ok) {
+      const error = await formatAiHttpError(response);
       return {
         ok: false,
-        error: 'AI request failed',
+        error,
         mode,
         focusAsset,
         summary: null,
@@ -439,10 +466,13 @@ export async function runMarketNewsScan(rawBody, env) {
       summary: { ...summary, sourcesReferenced },
       articles,
     };
-  } catch {
+  } catch (e) {
+    const aborted = e?.name === 'AbortError';
     return {
       ok: false,
-      error: 'News scan failed',
+      error: aborted
+        ? 'News scan timed out while calling the AI. Try again or use a shorter scan.'
+        : 'News scan failed (network or unexpected error).',
       mode,
       focusAsset,
       summary: null,

@@ -111,7 +111,7 @@ export function OrderInputsCard(props: {
   balanceUsd: number;
   /**
    * Live exchange line for the balance *display* (e.g. UTA available). When omitted, `balanceUsd` is shown.
-   * Sizing / slider max still use `balanceUsd` so demo floors can apply when the exchange reports $0 available.
+   * Sizing / slider max use `balanceUsd`.
    */
   displayBalanceUsd?: number | null;
   amountUsd: number;
@@ -156,13 +156,13 @@ export function OrderInputsCard(props: {
   utaMarginInUseUsd?: number | null;
   /** UTA equity from Bybit (includes unrealized PnL on real positions). */
   utaEquityUsd?: number | null;
-  /** Aggregate unrealized PnL on exchange (UTA / perps); not related to practice positions in Sigflo. */
+  /** Aggregate unrealized PnL on exchange (UTA / perps), from account sync. */
   utaUnrealizedPnlUsd?: number | null;
   /** UTA wallet balance from Bybit (distinct from equity when positions are open). */
   utaWalletBalanceUsd?: number | null;
   /**
    * When set, shows a Transfer control that opens the exchange transfer UI in a new tab
-   * (e.g. Bybit Funding ↔ Unified Trading Account). Sigflo does not submit orders from the app yet (any key type).
+   * (e.g. Bybit Funding ↔ Unified Trading Account). Trading still uses separate Long/Short / Close actions.
    */
   assetTransferHref?: string | null;
   /** Inline summary: margin, fee, liq, risk — shown above the footer row when provided. */

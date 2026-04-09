@@ -6,8 +6,7 @@ import {
   buildMarketScannerRows,
   buildTrackedScannerRows,
   countActiveSetups,
-  GAINERS_LIMIT,
-  rankTopGainers,
+  rankMoversUniverse,
   sortScannerRowsForTapPriority,
   TRACKED_SYMBOLS,
   type TriggerTimingRefs,
@@ -46,7 +45,7 @@ export function useMarketsScanner(): MarketsScannerState {
       engine.setScannerTickerExtras([]);
       return;
     }
-    const ranked = rankTopGainers(list, GAINERS_LIMIT);
+    const ranked = rankMoversUniverse(list);
     const extras = ranked.map((t) => t.symbol).filter((s) => !trackedSet.has(s));
     engine.setScannerTickerExtras(extras);
   }, [tickersBySymbol, engine.setScannerTickerExtras, trackedSet]);
@@ -111,7 +110,7 @@ export function useMarketsScanner(): MarketsScannerState {
       moverRows,
       activeSetupsTracked: countActiveSetups(trackedRows, 70),
       activeSetupsMovers: countActiveSetups(moverRows, 70),
-      moversCount: Math.min(GAINERS_LIMIT, moverRows.length),
+      moversCount: moverRows.length,
       mode: engine.mode,
       connection: engine.connection,
       tickersLoading,

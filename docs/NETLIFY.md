@@ -44,6 +44,7 @@ netlify deploy --prod
 |----------|---------|
 | `VITE_SUPABASE_URL` | Auth |
 | `VITE_SUPABASE_ANON_KEY` | Auth |
+| `VITE_AUTH_REDIRECT_ORIGIN` | Optional canonical origin for Google OAuth return (e.g. `https://www.sigflo.group`) if apex→www redirects broke sign-in; must match entries in Supabase **Redirect URLs**. |
 | `VITE_BACKEND_API_BASE` | Exchange integrations API (e.g. `https://your-api.onrender.com/api`) if you host `backend/` elsewhere |
 | `VITE_BASE` | Only if the app is served under a subpath (must end with `/`; see `vite.config.ts`) |
 

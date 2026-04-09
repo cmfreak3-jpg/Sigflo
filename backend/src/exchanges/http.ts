@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { sanitizeHttpErrorDetail } from '../lib/httpErrorDetail.js';
 
 export function signHmacSha256(secret: string, payload: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('hex');
@@ -23,6 +24,7 @@ export async function getJson<T>(url: string, headers: Record<string, string>): 
     } catch {
       /* not JSON */
     }
+    detail = sanitizeHttpErrorDetail(detail, url);
     throw new Error(`Request failed: HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
   }
   try {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { runScannerDeterminismDemo } from '@/engine/demoRunner';
+import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import { BybitWsClient } from '@/lib/bybitWsClient';
 import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
 import { atr } from '@/lib/indicators';
@@ -15,7 +15,7 @@ import type { CryptoSignal } from '@/types/signal';
 export type SignalEngineState = {
   signals: CryptoSignal[];
   loading: boolean;
-  mode: 'REST' | 'WS' | 'MOCK';
+  mode: 'REST' | 'WS' | 'OFFLINE';
   connection: 'connected' | 'reconnecting' | 'disconnected';
   error?: string;
   /** WS-backed last prices for streamed symbols (Markets / Feed overlay). */
@@ -86,19 +86,19 @@ export function useSignalEngine(): SignalEngineState {
   const tickersRef = useRef<Record<string, SymbolTicker>>({});
   const wsConnectedRef = useRef(false);
   const streamReadyRef = useRef(false);
-  const didPrintDeterminismDemoRef = useRef(false);
+  const didPrintDeterminismRef = useRef(false);
   const tickerFlushRafRef = useRef<number | null>(null);
   const wsClientRef = useRef<BybitWsClient | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (import.meta.env.DEV && !didPrintDeterminismDemoRef.current) {
-      didPrintDeterminismDemoRef.current = true;
-      const demo = runScannerDeterminismDemo();
+    if (import.meta.env.DEV && !didPrintDeterminismRef.current) {
+      didPrintDeterminismRef.current = true;
+      const check = runScannerDeterminismCheck();
       // Dev-only visibility: verifies deterministic first pass and cooldown/dedup on second pass.
-      console.log('[Sigflo][Engine Demo] Pass 1', demo.firstPass);
-      console.log('[Sigflo][Engine Demo] Pass 2', demo.secondPass);
+      console.log('[Sigflo][Engine] determinism pass 1', check.firstPass);
+      console.log('[Sigflo][Engine] determinism pass 2', check.secondPass);
     }
 
     function pushState(mode: SignalEngineState['mode'], connection: SignalEngineState['connection'], error?: string) {
@@ -142,7 +142,7 @@ export function useSignalEngine(): SignalEngineState {
         pushState('REST', wsConnectedRef.current ? 'connected' : 'disconnected');
       } catch (err) {
         if (cancelled) return;
-        pushState('MOCK', wsConnectedRef.current ? 'reconnecting' : 'disconnected', err instanceof Error ? err.message : 'Signal engine failed');
+        pushState('OFFLINE', wsConnectedRef.current ? 'reconnecting' : 'disconnected', err instanceof Error ? err.message : 'Signal engine failed');
       }
     }
 
@@ -197,7 +197,7 @@ export function useSignalEngine(): SignalEngineState {
           pushState('WS', 'connected');
           return;
         }
-        pushState(streamReadyRef.current ? 'REST' : 'MOCK', connection);
+        pushState(streamReadyRef.current ? 'REST' : 'OFFLINE', connection);
       },
       onTicker: (ticker) => {
         const mapped = wsTickerToSymbolTicker(ticker);

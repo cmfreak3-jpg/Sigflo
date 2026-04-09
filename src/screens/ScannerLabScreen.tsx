@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
-import { breakoutScenario5m, overextendedScenario5m, pullbackScenario5m } from '@/data/mockCandles';
+import { breakoutScenario5m, overextendedScenario5m, pullbackScenario5m } from '@/data/scannerLabCandles';
 import {
   deriveIndicators,
-  detectBreakoutPressure,
-  detectOverextendedWarning,
-  detectPullbackContinuation,
+  MIN_ENGINE_BARS,
+  runScannerLabEngineEvaluations,
   type DetectorEvaluation,
 } from '@/lib/detectors';
-import type { DetectorOptions } from '@/lib/detectors';
 import { calculateSetupScore, getSetupScoreLabel } from '@/lib/setupScore';
 import {
   createPlaybackSession,
@@ -20,7 +18,7 @@ import {
   type PlaybackSession,
   type PlaybackStepResult,
   type ScenarioKey,
-} from '@/lib/mockPlayback';
+} from '@/lib/candlePlayback';
 
 const SCENARIOS: Record<ScenarioKey, { label: string }> = {
   breakout: { label: 'Breakout' },
@@ -214,12 +212,7 @@ export function ScannerLabScreen() {
 
     for (let i = 1; i <= upto; i += 1) {
       const visible = candles.slice(0, i);
-      const indicators = deriveIndicators(visible);
-      const evaluations = [
-        detectBreakoutPressure(visible, indicators, session.config.detectorOptions),
-        detectPullbackContinuation(visible, indicators, session.config.detectorOptions),
-        detectOverextendedWarning(visible, indicators, session.config.detectorOptions),
-      ];
+      const { evaluations } = runScannerLabEngineEvaluations(session.config.symbol, visible);
       for (const ev of evaluations) {
         const score = ev.scoreBreakdown ? calculateSetupScore(ev.scoreBreakdown) : null;
         const status = statusFromEvaluation(ev, score);
@@ -288,7 +281,7 @@ export function ScannerLabScreen() {
     });
 
     return out;
-  }, [scenario, session.config.detectorOptions, session.state.emittedSignals, session.state.index]);
+  }, [scenario, session.config.symbol, session.state.emittedSignals, session.state.index]);
 
   useEffect(() => {
     const nextMap: Record<string, number> = {};
@@ -321,25 +314,6 @@ export function ScannerLabScreen() {
     setIsPlaying(false);
   };
 
-  const applyDetectorOptions = (patch: Partial<DetectorOptions>) => {
-    setIsPlaying(false);
-    setSession((prev) => {
-      const next = {
-        ...prev,
-        config: {
-          ...prev.config,
-          detectorOptions: {
-            ...prev.config.detectorOptions,
-            ...patch,
-          },
-        },
-      };
-      const reset = resetPlayback(next);
-      setLastStep(reset.lastStep);
-      return reset;
-    });
-  };
-
   return (
     <div className="space-y-4 pb-6 pt-4">
       <header className="space-y-1">
@@ -363,7 +337,9 @@ export function ScannerLabScreen() {
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold text-white">How to use this lab</h2>
         <p className="text-xs text-sigflo-muted">1) Pick a scenario. 2) Press Step or Play. 3) Watch detector status, setup score, and signal history.</p>
-        <p className="text-xs text-sigflo-muted">Use Lab Controls to toggle RSI/volume filters and compression, then replay from candle 0 and compare timing + frequency.</p>
+        <p className="text-xs text-sigflo-muted">
+          Rules match the production engine (`@/engine/detectors`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
+        </p>
       </Card>
 
       <Card className="space-y-3 p-4">
@@ -412,47 +388,14 @@ export function ScannerLabScreen() {
         </div>
       </Card>
 
-      <Card className="space-y-3 p-4">
-        <h2 className="text-sm font-semibold text-white">Lab Controls</h2>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => applyDetectorOptions({ useVolumeFilter: !session.config.detectorOptions.useVolumeFilter })}
-            className={`rounded-lg border px-2 py-2 ${
-              session.config.detectorOptions.useVolumeFilter
-                ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
-                : 'border-sigflo-border bg-sigflo-bg/50 text-sigflo-muted'
-            }`}
-          >
-            Volume filter {session.config.detectorOptions.useVolumeFilter ? 'ON' : 'OFF'}
-          </button>
-          <button
-            type="button"
-            onClick={() => applyDetectorOptions({ useRsiFilter: !session.config.detectorOptions.useRsiFilter })}
-            className={`rounded-lg border px-2 py-2 ${
-              session.config.detectorOptions.useRsiFilter
-                ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-200'
-                : 'border-sigflo-border bg-sigflo-bg/50 text-sigflo-muted'
-            }`}
-          >
-            RSI filter {session.config.detectorOptions.useRsiFilter ? 'ON' : 'OFF'}
-          </button>
-        </div>
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-sigflo-muted">Compression threshold</span>
-            <span className="text-white">{session.config.detectorOptions.compressionThreshold.toFixed(2)}</span>
-          </div>
-          <input
-            type="range"
-            min="0.8"
-            max="2.2"
-            step="0.05"
-            value={session.config.detectorOptions.compressionThreshold}
-            onChange={(e) => applyDetectorOptions({ compressionThreshold: Number(e.target.value) })}
-            className="w-full accent-cyan-400"
-          />
-        </div>
+      <Card className="space-y-2 p-4">
+        <h2 className="text-sm font-semibold text-white">Engine parity</h2>
+        <p className="text-xs text-sigflo-muted">
+          Playback uses <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">@/engine/detectors</code> with{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">pickBestDirectionalPair</code> — same stack as{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">runScannerPipeline</code>. Per-bar toggles were removed
+          so the lab cannot drift from production thresholds.
+        </p>
       </Card>
 
       <Card className="p-4">

@@ -19,7 +19,7 @@ export default function BotDetailScreen() {
     return signals.find((s) => s.id === bot.signalId) ?? signals[0] ?? null;
   }, [bot, signals]);
 
-  if (!bot || !signal) {
+  if (!bot) {
     return (
       <div className="space-y-3 pt-4">
         <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4">
@@ -32,18 +32,25 @@ export default function BotDetailScreen() {
     );
   }
 
+  const hasSignal = signal != null;
   const status = statusMap[bot.id] ?? bot.status;
   const tone = statusTone(status);
-  const marketStatus = deriveMarketStatus(signal);
-  const uiState = uiSignalStateFromMarketStatus(marketStatus);
+  const marketStatus = hasSignal ? deriveMarketStatus(signal) : null;
+  const uiState = marketStatus != null ? uiSignalStateFromMarketStatus(marketStatus) : 'setup_forming';
   const stateStyle = uiSignalStateClasses(uiState);
-  const focusPair = bot.watchedPairs[0] ?? signal.pair;
+  const focusPair = bot.watchedPairs[0] ?? signal?.pair ?? '—';
 
-  const recent = [
-    `${signal.pair} ${uiSignalStateLabel(uiState).toLowerCase()}`,
-    `${bot.watchedPairs[1] ?? signal.pair} setup scan refreshed`,
-    `${bot.watchedPairs[2] ?? signal.pair} momentum check complete`,
-  ];
+  const recent = hasSignal
+    ? [
+        `${signal.pair} ${uiSignalStateLabel(uiState).toLowerCase()}`,
+        `${bot.watchedPairs[1] ?? signal.pair} setup scan refreshed`,
+        `${bot.watchedPairs[2] ?? signal.pair} momentum check complete`,
+      ]
+    : [
+        `${focusPair} waiting for market data`,
+        `${bot.watchedPairs[1] ?? focusPair} scan idle`,
+        `${bot.watchedPairs[2] ?? focusPair} momentum check pending`,
+      ];
 
   return (
     <div className="min-h-[100dvh] bg-sigflo-bg pb-6 pt-4">
@@ -60,7 +67,7 @@ export default function BotDetailScreen() {
 
         <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3 text-xs text-sigflo-muted">
           <p>Markets watched: {bot.watchedPairs.join(', ')}</p>
-          <p className="mt-1">Last action: {shortActionLabel(signal)}</p>
+          <p className="mt-1">Last action: {hasSignal ? shortActionLabel(signal) : 'Waiting for live signals'}</p>
           <p className="mt-1">Current focus: {focusPair}</p>
           <p className="mt-1">Risk mode: {bot.riskMode}</p>
         </section>
@@ -76,16 +83,24 @@ export default function BotDetailScreen() {
           </div>
         </section>
 
-        <section className={`rounded-2xl border bg-sigflo-surface p-3 ${stateStyle.card}`}>
+        <section className={`rounded-2xl border bg-sigflo-surface p-3 ${hasSignal ? stateStyle.card : 'border-white/[0.06]'}`}>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Current setup</p>
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-base font-bold text-white">{signal.pair} / USDT</p>
-            <p className={`inline-flex items-center gap-1 text-xs font-semibold ${stateStyle.text}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${stateStyle.dot}`} />
-              {uiSignalStateLabel(uiState)}
+          {hasSignal ? (
+            <>
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-base font-bold text-white">{signal.pair} / USDT</p>
+                <p className={`inline-flex items-center gap-1 text-xs font-semibold ${stateStyle.text}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${stateStyle.dot}`} />
+                  {uiSignalStateLabel(uiState)}
+                </p>
+              </div>
+              <p className="mt-1 text-xs text-sigflo-muted">{signal.biasLabel}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-sigflo-muted">
+              No live setup yet. Open Markets when data is available, or check your connection if the feed is offline.
             </p>
-          </div>
-          <p className="mt-1 text-xs text-sigflo-muted">{signal.biasLabel}</p>
+          )}
         </section>
 
         <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
@@ -122,8 +137,16 @@ export default function BotDetailScreen() {
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/trade?${buildTradeQueryString(signal, { marketStatus })}`)}
-            className="rounded-2xl border border-sigflo-accent/30 bg-sigflo-accentDim px-3 py-2 text-sm font-semibold text-sigflo-accent"
+            disabled={!hasSignal}
+            onClick={() => {
+              if (!hasSignal || !signal || !marketStatus) return;
+              navigate(`/trade?${buildTradeQueryString(signal, { marketStatus })}`);
+            }}
+            className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
+              hasSignal
+                ? 'border-sigflo-accent/30 bg-sigflo-accentDim text-sigflo-accent'
+                : 'cursor-not-allowed border-white/[0.08] bg-white/[0.02] text-sigflo-muted'
+            }`}
           >
             Open trade
           </button>

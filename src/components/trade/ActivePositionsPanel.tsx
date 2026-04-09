@@ -7,9 +7,7 @@ import type { PositionItem } from '@/types/integrations';
 import type { MarketMode } from '@/types/trade';
 
 type ActivePositionsPanelProps = {
-  executionMode: 'paper' | 'exchange';
   market: MarketMode;
-  paperPositions: SimulatedActivePosition[];
   exchangePosition: PositionItem | null;
   /** Spot holding derived from wallet balance (no linear `position/list` row). */
   exchangeSpotDisplay: SimulatedActivePosition | null;
@@ -24,9 +22,7 @@ type ActivePositionsPanelProps = {
 };
 
 export function ActivePositionsPanel({
-  executionMode,
   market,
-  paperPositions,
   exchangePosition,
   exchangeSpotDisplay,
   displayPair,
@@ -48,20 +44,13 @@ export function ActivePositionsPanel({
     return syntheticFromExchangePosition(exchangePosition, displayPair, market, leverageFallback);
   }, [displayPair, exchangePosition, leverageFallback, market]);
 
-  const showExchangeFutures =
-    executionMode === 'exchange' && market === 'futures' && exchangePosition != null && exchangeCardModel != null;
-  const showExchangeSpot = executionMode === 'exchange' && market === 'spot' && exchangeSpotDisplay != null;
+  const showExchangeFutures = market === 'futures' && exchangePosition != null && exchangeCardModel != null;
+  const showExchangeSpot = market === 'spot' && exchangeSpotDisplay != null;
   const showExchange = showExchangeFutures || showExchangeSpot;
-  const showPaper = executionMode === 'paper' && paperPositions.length > 0;
 
-  if (!showExchange && !showPaper) return null;
+  if (!showExchange) return null;
 
-  const header =
-    executionMode === 'exchange'
-      ? market === 'spot'
-        ? 'Bybit spot'
-        : 'Bybit position'
-      : `Practice position${paperPositions.length > 1 ? ` · ${paperPositions.length}` : ''}`;
+  const header = market === 'spot' ? 'Bybit spot' : 'Bybit position';
 
   return (
     <AnimatePresence mode="popLayout">
@@ -80,11 +69,6 @@ export function ActivePositionsPanel({
               <span className="truncate text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3] sm:text-[10px]">
                 {header}
               </span>
-              {executionMode === 'paper' && paperPositions.length > 1 ? (
-                <span className="shrink-0 rounded bg-white/[0.06] px-1 py-px font-mono text-[9px] font-bold tabular-nums text-white/75">
-                  {paperPositions.length}
-                </span>
-              ) : null}
             </div>
             <button
               type="button"
@@ -138,37 +122,13 @@ export function ActivePositionsPanel({
                   />
                 </motion.div>
               ) : null}
-              {showPaper
-                ? paperPositions.map((p) => (
-                    <motion.div
-                      key={p.id}
-                      layout
-                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, x: -12, scale: 0.98, transition: { duration: 0.2 } }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                    >
-                      <ActivePositionCard
-                        position={p}
-                        markPrice={markPrice}
-                        nowMs={nowMs}
-                        exitAiModeLabel={exitAiModeLabel}
-                        exitStrategyLabel={exitStrategyLabel}
-                        scenarioSummary={scenarioSummary}
-                        executionSource="paper"
-                      />
-                    </motion.div>
-                  ))
-                : null}
             </AnimatePresence>
           </div>
 
           <p className="px-0.5 text-center text-[8px] leading-snug text-sigflo-muted/85">
-            {executionMode === 'exchange'
-              ? market === 'spot'
-                ? 'Synced from your Bybit wallet — Close / Partial send market sells (base qty).'
-                : 'Synced from your Bybit account — use Close to send reduce-only orders.'
-              : 'Not a Bybit position — PnL here is simulated. Connect Bybit to trade perps or spot for real.'}
+            {market === 'spot'
+              ? 'Synced from your Bybit wallet — Close / Partial send market sells (base qty).'
+              : 'Synced from your Bybit account — use Close to send reduce-only orders.'}
           </p>
         </div>
       </motion.div>

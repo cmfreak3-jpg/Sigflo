@@ -6,6 +6,9 @@ import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
+import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
+import { BYBIT_DEPOSIT_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
+import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -149,8 +152,7 @@ export default function ProfileScreen() {
     try {
       setSecurityBusy('password');
       setSecurityMessage(null);
-      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-      const redirectTo = `${window.location.origin}${base}/profile`;
+      const redirectTo = getOAuthRedirectToProfile();
       const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo });
       if (error) throw error;
       setSecurityMessage(`Password reset link sent to ${user.email}.`);
@@ -408,13 +410,24 @@ export default function ProfileScreen() {
                     </p>
                   </div>
                   {connected ? (
-                    <button
-                      type="button"
-                      onClick={() => setDisconnectTarget(exchange)}
-                      className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
-                    >
-                      Disconnect
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={exchange === 'bybit' ? BYBIT_DEPOSIT_HREF : MEXC_DEPOSIT_HREF}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${exchange.toUpperCase()} deposit in a new tab`}
+                        className="rounded-lg border border-sigflo-accent/35 bg-sigflo-accent/10 px-2 py-1 text-[11px] font-semibold text-sigflo-accent transition hover:bg-sigflo-accent/15"
+                      >
+                        Deposit
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setDisconnectTarget(exchange)}
+                        className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
@@ -451,7 +464,9 @@ export default function ProfileScreen() {
         </div>
         {syncIssue ? (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2">
-            <p className="text-[11px] text-amber-100">Last sync failed: {syncIssue}</p>
+            <p className="text-[11px] text-amber-100">
+              Last sync failed: {sanitizeUserFacingHttpErrorMessage(syncIssue)}
+            </p>
             <button
               type="button"
               disabled={syncBusy}
@@ -464,6 +479,72 @@ export default function ProfileScreen() {
         ) : null}
         {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
       </section>
+
+      {exchangeForm ? (
+        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3.5">
+          <p className="text-sm font-semibold text-cyan-100">Connect {exchangeForm.exchange.toUpperCase()}</p>
+          <div className="mt-2 space-y-2">
+            <input
+              value={exchangeForm.apiKey}
+              onChange={(e) => setExchangeForm({ ...exchangeForm, apiKey: e.target.value })}
+              placeholder="API key"
+              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
+            />
+            <input
+              value={exchangeForm.apiSecret}
+              onChange={(e) => setExchangeForm({ ...exchangeForm, apiSecret: e.target.value })}
+              placeholder="API secret"
+              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
+            />
+            <input
+              value={exchangeForm.passphrase}
+              onChange={(e) => setExchangeForm({ ...exchangeForm, passphrase: e.target.value })}
+              placeholder="Passphrase (optional)"
+              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
+            />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={connectBusy}
+              onClick={async () => {
+                if (!exchangeForm.apiKey || !exchangeForm.apiSecret) {
+                  setConnectError('API key and secret are required.');
+                  return;
+                }
+                try {
+                  setConnectBusy(true);
+                  setConnectError(null);
+                  await connect(exchangeForm.exchange, {
+                    apiKey: exchangeForm.apiKey,
+                    apiSecret: exchangeForm.apiSecret,
+                    passphrase: exchangeForm.passphrase || undefined,
+                  });
+                  await refreshSnapshots();
+                  setExchangeForm(null);
+                } catch (e) {
+                  setConnectError(
+                    e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
+                  );
+                } finally {
+                  setConnectBusy(false);
+                }
+              }}
+              className="rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-200"
+            >
+              {connectBusy ? 'Validating...' : 'Save and validate'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setExchangeForm(null)}
+              className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-sigflo-text"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-sigflo-muted">Keys are encrypted at rest and never returned to the client after submission.</p>
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Trading Profile</p>
@@ -516,70 +597,6 @@ export default function ProfileScreen() {
         </div>
         <p className="mt-2 text-[11px] text-sigflo-muted">Based on your trading activity</p>
       </section>
-
-      {exchangeForm ? (
-        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3.5">
-          <p className="text-sm font-semibold text-cyan-100">Connect {exchangeForm.exchange.toUpperCase()}</p>
-          <div className="mt-2 space-y-2">
-            <input
-              value={exchangeForm.apiKey}
-              onChange={(e) => setExchangeForm({ ...exchangeForm, apiKey: e.target.value })}
-              placeholder="API key"
-              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
-            />
-            <input
-              value={exchangeForm.apiSecret}
-              onChange={(e) => setExchangeForm({ ...exchangeForm, apiSecret: e.target.value })}
-              placeholder="API secret"
-              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
-            />
-            <input
-              value={exchangeForm.passphrase}
-              onChange={(e) => setExchangeForm({ ...exchangeForm, passphrase: e.target.value })}
-              placeholder="Passphrase (optional)"
-              className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
-            />
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              disabled={connectBusy}
-              onClick={async () => {
-                if (!exchangeForm.apiKey || !exchangeForm.apiSecret) {
-                  setConnectError('API key and secret are required.');
-                  return;
-                }
-                try {
-                  setConnectBusy(true);
-                  setConnectError(null);
-                  await connect(exchangeForm.exchange, {
-                    apiKey: exchangeForm.apiKey,
-                    apiSecret: exchangeForm.apiSecret,
-                    passphrase: exchangeForm.passphrase || undefined,
-                  });
-                  await refreshSnapshots();
-                  setExchangeForm(null);
-                } catch (e) {
-                  setConnectError(e instanceof Error ? e.message : 'Connection failed.');
-                } finally {
-                  setConnectBusy(false);
-                }
-              }}
-              className="rounded-lg border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-200"
-            >
-              {connectBusy ? 'Validating...' : 'Save and validate'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setExchangeForm(null)}
-              className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-sigflo-text"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="mt-2 text-[11px] text-sigflo-muted">Keys are encrypted at rest and never returned to the client after submission.</p>
-        </section>
-      ) : null}
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">System</p>
@@ -809,7 +826,8 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
 
   if (!breakdown) {
     if (snapshot.status === 'error') {
-      const detail = snapshot.syncError?.trim();
+      const detailRaw = snapshot.syncError?.trim();
+      const detail = detailRaw ? sanitizeUserFacingHttpErrorMessage(detailRaw) : '';
       return (
         <div className="mt-2 space-y-1.5 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2 py-2 text-[11px] leading-snug text-rose-100/95">
           <p>

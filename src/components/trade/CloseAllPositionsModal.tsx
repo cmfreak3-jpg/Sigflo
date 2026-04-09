@@ -4,9 +4,16 @@ export type CloseAllPositionsModalProps = {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  /** When true, Long/Short / Close use the Bybit API via Sigflo. */
+  exchangeExecution?: boolean;
 };
 
-export function CloseAllPositionsModal({ open, onCancel, onConfirm }: CloseAllPositionsModalProps) {
+export function CloseAllPositionsModal({
+  open,
+  onCancel,
+  onConfirm,
+  exchangeExecution = true,
+}: CloseAllPositionsModalProps) {
   return (
     <>
       <AnimatePresence>
@@ -39,8 +46,18 @@ export function CloseAllPositionsModal({ open, onCancel, onConfirm }: CloseAllPo
               Close all positions?
             </h2>
             <p className="mt-2 text-[13px] leading-relaxed text-sigflo-muted">
-              This will clear every active (demo) position on this screen. Sigflo does not send orders to your exchange —
-              confirm on the venue for real exits.
+              {exchangeExecution ? (
+                <>
+                  Close all sends <span className="font-semibold text-sigflo-text/90">real orders on Bybit</span> for the
+                  positions shown (reduce-only market exits on perps; market sells on spot) using your linked API keys.
+                  Confirm fills and size in Bybit or Portfolio.
+                </>
+              ) : (
+                <>
+                  Connect Bybit in Account to send closes from Sigflo. Until then, this button cannot submit exchange
+                  orders — manage the position on Bybit directly.
+                </>
+              )}
             </p>
             <div className="mt-4 flex gap-2">
               <button

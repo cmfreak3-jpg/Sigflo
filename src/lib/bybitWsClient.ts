@@ -1,4 +1,4 @@
-type WsTopicInterval = '5' | '15' | '60' | '240' | 'D' | 'W';
+type WsTopicInterval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
 type WsConnection = 'connected' | 'reconnecting' | 'disconnected';
 
 export type BybitWsKline = {

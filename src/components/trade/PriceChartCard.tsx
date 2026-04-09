@@ -156,8 +156,10 @@ export function PriceChartCard({
    * already shows them). Left column becomes “Price chart” + `liveHeaderMetrics` instead.
    */
   suppressExchangeHeroLivePrice = false,
-  /** Strip label when `liveTradeMode` (e.g. practice vs exchange-backed). */
-  liveActivePositionTitle = 'Practice position',
+  /** Strip label when `liveTradeMode` (open position context). */
+  liveActivePositionTitle = 'Live position',
+  pnlHeaderLabel,
+  pnlHeaderTone,
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -201,12 +203,21 @@ export function PriceChartCard({
   liveTradeOverlayPreset?: boolean;
   suppressExchangeHeroLivePrice?: boolean;
   liveActivePositionTitle?: string;
+  /** Optional compact PnL line next to live chart price. */
+  pnlHeaderLabel?: string;
+  pnlHeaderTone?: 'positive' | 'negative' | 'neutral';
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
   /** Exchange trade header: price/TF row should meet the plot with no extra chrome gap. */
   const exchangeTfHero =
     Boolean(exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange);
+  const pnlHeaderToneClass =
+    pnlHeaderTone === 'positive'
+      ? 'text-emerald-300'
+      : pnlHeaderTone === 'negative'
+        ? 'text-rose-300'
+        : 'text-sigflo-muted';
   const showLiquidation = market === 'futures';
   const setupControlled = typeof setupMode === 'boolean';
   /** Latest setup flag for async fade-out (avoid clearing overlays after user re-enters Setup). */
@@ -459,22 +470,32 @@ export function PriceChartCard({
     }
 
     if (primaryBand.length === 0) {
-      const fallback: number[] = [];
-      if (Number.isFinite(model.lastPrice) && model.lastPrice > 0) fallback.push(model.lastPrice);
-      if (visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0) {
-        fallback.push(staticLevelPrices.stop);
-      }
-      if (
+      if (!Number.isFinite(model.lastPrice) || model.lastPrice <= 0) return null;
+      let lo = model.lastPrice;
+      let hi = model.lastPrice;
+      const span = Math.max(hi - lo, hi * 0.0005, 1);
+      const tryRiskOnly = (price: number, enabled: boolean) => {
+        if (!enabled || !Number.isFinite(price) || price <= 0) return;
+        if (price >= lo && price <= hi) return;
+        if (price < lo) {
+          const dist = lo - price;
+          if (dist / span <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) lo = price;
+        } else {
+          const dist = price - hi;
+          if (dist / span <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) hi = price;
+        }
+      };
+      tryRiskOnly(
+        staticLevelPrices.stop,
+        visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0,
+      );
+      tryRiskOnly(
+        staticLevelPrices.liquidation,
         showLiquidation &&
-        visibleLevels.liquidation &&
-        Number.isFinite(staticLevelPrices.liquidation) &&
-        staticLevelPrices.liquidation > 0
-      ) {
-        fallback.push(staticLevelPrices.liquidation);
-      }
-      if (fallback.length === 0) return null;
-      const lo = Math.min(...fallback);
-      const hi = Math.max(...fallback);
+          visibleLevels.liquidation &&
+          Number.isFinite(staticLevelPrices.liquidation) &&
+          staticLevelPrices.liquidation > 0,
+      );
       return padPriceExtent(lo, hi);
     }
 
@@ -509,6 +530,7 @@ export function PriceChartCard({
         staticLevelPrices.liquidation > 0,
     );
 
+    // Stop/liq still outside the ratio band: lines may clip — do not expand Y-scale or candles look flat.
     return padPriceExtent(min, max);
   }, [visibleLevels, staticLevelPrices, model.lastPrice, showLiquidation, auxiliaryPriceLines]);
 
@@ -621,14 +643,32 @@ export function PriceChartCard({
     };
   }, []);
 
-  useEffect(() => {
+  /** Keep LC in sync with the plot box — `chartPlotHeightPx` uses CSS `transition` on height; a one-shot effect
+   * often read stale `clientHeight`. ResizeObserver + rAF resizes after layout and through the transition. */
+  useLayoutEffect(() => {
     const el = chartContainerRef.current;
-    const c = chartRef.current;
-    if (!el || !c) return;
-    const w = Math.max(1, Math.floor(el.clientWidth));
-    const h = Math.max(1, Math.floor(el.clientHeight));
-    c.resize(w, h);
-  }, [chartPlotHeightPx]);
+    const chart = chartRef.current;
+    if (!el || !chart) return;
+
+    let raf = 0;
+    const fit = () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const w = Math.max(1, Math.floor(el.clientWidth));
+        const h = Math.max(1, Math.floor(el.clientHeight));
+        chart.resize(w, h);
+      });
+    };
+
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (raf !== 0) window.cancelAnimationFrame(raf);
+    };
+  }, []);
 
   /** Stop live auto-scroll when focus leaves the page (e.g. another tab) — same as leaving the chart. */
   useEffect(() => {
@@ -1255,6 +1295,11 @@ export function PriceChartCard({
                   {change.toFixed(2)}%
                 </span>
               </div>
+              {pnlHeaderLabel ? (
+                <p className={`mt-0.5 text-[10px] font-semibold tabular-nums md:text-[11px] ${pnlHeaderToneClass}`}>
+                  {pnlHeaderLabel}
+                </p>
+              ) : null}
             </div>
             <div className="flex min-w-0 max-w-[58%] shrink-0 items-center gap-1 sm:max-w-[62%] md:max-w-[55%] md:gap-1.5">
               <span className="hidden shrink-0 text-[9px] font-semibold uppercase tracking-[0.16em] text-sigflo-muted/80 sm:inline md:text-[10px]">
@@ -1298,6 +1343,11 @@ export function PriceChartCard({
                   {change.toFixed(2)}%
                 </span>
               </div>
+              {pnlHeaderLabel ? (
+                <p className={`mt-0.5 text-[10px] font-semibold tabular-nums md:text-[11px] ${pnlHeaderToneClass}`}>
+                  {pnlHeaderLabel}
+                </p>
+              ) : null}
             </div>
             <div className="shrink-0 text-right">{perpTimeCluster}</div>
           </div>

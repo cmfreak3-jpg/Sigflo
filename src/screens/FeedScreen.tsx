@@ -6,7 +6,13 @@ import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { tradeChartIntervalShortLabel } from '@/lib/tradeChartIntervalPreference';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import { deriveMarketStatus, isFeedActionableOpportunity } from '@/lib/marketScannerRows';
+import {
+  buildTrackedFallbackSignal,
+  deriveMarketStatus,
+  isFeedActionableOpportunity,
+  symbolToPair,
+  TRACKED_SYMBOLS,
+} from '@/lib/marketScannerRows';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
@@ -28,6 +34,15 @@ export function FeedScreen() {
   const [newsScanOpen, setNewsScanOpen] = useState(false);
   const { signals: liveSignals, loading, mode, connection } = useSignalEngine();
 
+  /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
+  const feedSignalsBase = useMemo(() => {
+    const covered = new Set(liveSignals.map((s) => s.pair.toUpperCase()));
+    const forming = TRACKED_SYMBOLS.filter((sym) => !covered.has(symbolToPair(sym).toUpperCase())).map((sym) =>
+      buildTrackedFallbackSignal(symbolToPair(sym), sym),
+    );
+    return [...liveSignals, ...forming].sort((a, b) => b.setupScore - a.setupScore);
+  }, [liveSignals]);
+
   useEffect(() => {
     const next = searchParams.get('filter');
     if (next === 'strong' || next === 'actionable' || next === 'risky' || next === 'all') {
@@ -36,13 +51,13 @@ export function FeedScreen() {
   }, [searchParams]);
 
   const signals = useMemo(() => {
-    if (filter === 'strong') return liveSignals.filter((s) => s.setupScore >= 70);
-    if (filter === 'actionable') return liveSignals.filter(isFeedActionableOpportunity);
+    if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 70);
+    if (filter === 'actionable') return feedSignalsBase.filter(isFeedActionableOpportunity);
     if (filter === 'risky') {
-      return liveSignals.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
+      return feedSignalsBase.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
     }
-    return liveSignals;
-  }, [filter, liveSignals]);
+    return feedSignalsBase;
+  }, [filter, feedSignalsBase]);
 
   const statusDot = loading
     ? 'bg-amber-400 animate-pulse'
@@ -62,10 +77,10 @@ export function FeedScreen() {
             <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
               <span>
-                {loading ? 'Syncing' : mode === 'MOCK' ? 'Offline' : mode} ·{' '}
+                {loading ? 'Syncing' : mode === 'OFFLINE' ? 'Offline' : mode} ·{' '}
                 {filter === 'all'
-                  ? `${liveSignals.length} setups`
-                  : `${signals.length} of ${liveSignals.length} setups`}
+                  ? `${feedSignalsBase.length} setups`
+                  : `${signals.length} of ${feedSignalsBase.length} setups`}
               </span>
             </div>
             <div className="mt-1 inline-flex items-center gap-2 text-[10px] font-medium text-sigflo-muted">

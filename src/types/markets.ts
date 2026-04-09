@@ -14,7 +14,7 @@ export interface MarketsScannerState {
   activeSetupsTracked: number;
   activeSetupsMovers: number;
   moversCount: number;
-  mode: 'REST' | 'WS' | 'MOCK';
+  mode: 'REST' | 'WS' | 'OFFLINE';
   connection: 'connected' | 'reconnecting' | 'disconnected';
   tickersLoading: boolean;
 }
@@ -22,7 +22,7 @@ export interface MarketsScannerState {
 export interface MarketScannerRow {
   symbol: string;
   pair: string;
-  /** Merged signal for display + Trade (engine or mock). */
+  /** Merged signal for display + Trade (live engine). */
   signal: CryptoSignal;
   lastPrice: number;
   change24hPct: number;

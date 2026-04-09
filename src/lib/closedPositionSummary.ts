@@ -5,7 +5,7 @@ export type ClosedPositionSummary = {
   pairLabel: string;
   side: TradeSide;
   market: MarketMode;
-  execution: 'exchange' | 'paper';
+  execution: 'exchange';
   /** 0–1 fraction closed this action */
   fraction: number;
   entryPrice: number;
@@ -26,7 +26,6 @@ export function buildClosedPositionSummary(
   pos: SimulatedActivePosition,
   mark: number,
   fraction: number,
-  execution: 'exchange' | 'paper',
 ): ClosedPositionSummary | null {
   const f = Math.min(1, Math.max(0, fraction));
   if (!(f > 0)) return null;
@@ -41,7 +40,7 @@ export function buildClosedPositionSummary(
     pairLabel: pos.symbol,
     side: pos.side,
     market: pos.market,
-    execution,
+    execution: 'exchange',
     fraction: f,
     entryPrice: pos.entryPrice,
     markPrice: m,

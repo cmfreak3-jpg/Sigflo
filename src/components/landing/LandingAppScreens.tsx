@@ -22,7 +22,7 @@ function ScreenChrome({ children }: { children: ReactNode }) {
   );
 }
 
-function SignalFeedMock() {
+function SignalFeedPreview() {
   return (
     <ScreenChrome>
       <p className="text-[10px] font-medium uppercase tracking-wide text-landing-muted opacity-90">
@@ -52,7 +52,7 @@ function SignalFeedMock() {
   );
 }
 
-function TradeSetupMock() {
+function TradeSetupPreview() {
   return (
     <ScreenChrome>
       <p className="text-[10px] font-medium uppercase tracking-wide text-landing-muted opacity-90">
@@ -92,7 +92,7 @@ function TradeSetupMock() {
   );
 }
 
-function PositionRiskMock() {
+function PositionRiskPreview() {
   return (
     <ScreenChrome>
       <p className="text-[10px] font-medium uppercase tracking-wide text-landing-muted opacity-90">
@@ -118,7 +118,7 @@ function PositionRiskMock() {
   );
 }
 
-function ExchangeConnectMock() {
+function ExchangeConnectPreview() {
   return (
     <ScreenChrome>
       <p className="text-[10px] font-medium uppercase tracking-wide text-landing-muted opacity-90">
@@ -139,13 +139,13 @@ function ExchangeConnectMock() {
 }
 
 const SCREENS = [
-  { title: 'Signal feed', subtitle: 'Scan ranked ideas at a glance.', node: <SignalFeedMock /> },
-  { title: 'Trade setup', subtitle: 'One screen for the full thesis.', node: <TradeSetupMock /> },
-  { title: 'Position / risk', subtitle: 'Clarity before you size up.', node: <PositionRiskMock /> },
+  { title: 'Signal feed', subtitle: 'Scan ranked ideas at a glance.', node: <SignalFeedPreview /> },
+  { title: 'Trade setup', subtitle: 'One screen for the full thesis.', node: <TradeSetupPreview /> },
+  { title: 'Position / risk', subtitle: 'Clarity before you size up.', node: <PositionRiskPreview /> },
   {
     title: 'Exchange link',
     subtitle: 'Connect where you actually trade.',
-    node: <ExchangeConnectMock />,
+    node: <ExchangeConnectPreview />,
   },
 ] as const;
 
@@ -233,7 +233,7 @@ export function LandingAppScreens() {
             See Sigflo in action
           </h2>
           <p className="mt-4 max-w-xl text-landing-muted opacity-[0.86]">
-            A calm trading UI that respects your attention — mock previews below.
+            A calm trading UI that respects your attention — static previews below (not live account data).
           </p>
         </ScrollReveal>
 

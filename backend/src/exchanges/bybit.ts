@@ -1,4 +1,5 @@
 import { log } from '../lib/logger.js';
+import { sanitizeHttpErrorDetail } from '../lib/httpErrorDetail.js';
 import { getJson, signHmacSha256 } from './http.js';
 import type {
   AccountBucketKind,
@@ -102,10 +103,25 @@ async function privatePost<TResult>(path: string, body: Record<string, unknown>,
     'X-BAPI-SIGN': signature,
     'Content-Type': 'application/json',
   };
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: bodyStr });
-  const data = (await res.json()) as BybitResponse<TResult>;
+  const url = `${BASE_URL}${path}`;
+  const res = await fetch(url, { method: 'POST', headers, body: bodyStr });
+  const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Bybit HTTP ${res.status}: ${data.retMsg ?? 'request failed'}`);
+    let detail = text.trim().slice(0, 400);
+    try {
+      const j = JSON.parse(text) as { retMsg?: string };
+      if (j.retMsg != null) detail = j.retMsg;
+    } catch {
+      /* not JSON (e.g. HTML from CDN) */
+    }
+    detail = sanitizeHttpErrorDetail(detail, url);
+    throw new Error(`Bybit HTTP ${res.status}: ${detail || 'request failed'}`);
+  }
+  let data: BybitResponse<TResult>;
+  try {
+    data = JSON.parse(text) as BybitResponse<TResult>;
+  } catch {
+    throw new Error(`Bybit returned non-JSON for ${path}`);
   }
   if (data.retCode !== 0) {
     throw new Error(`Bybit error: ${data.retMsg || 'request rejected'}`);

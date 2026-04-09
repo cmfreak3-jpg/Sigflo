@@ -3,7 +3,8 @@ import { useState } from 'react';
 const PARTIAL_MIN_PCT = 5;
 const PARTIAL_MAX_PCT = 100;
 const PARTIAL_STEP = 5;
-const PARTIAL_DEFAULT_PCT = 25;
+/** Initial / reset slider — full close by default; user can lower before confirming. */
+const PARTIAL_DEFAULT_PCT = 100;
 
 export type PositionActionsBarProps = {
   variant?: 'dock' | 'sheet';

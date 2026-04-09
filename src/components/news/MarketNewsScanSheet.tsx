@@ -169,7 +169,7 @@ export function MarketNewsScanSheet({ open, onClose, focusAsset = null, marketRe
           ) : null}
 
           {result && !result.ok && result.error ? (
-            <p className="mb-3 text-[12px] text-rose-200/90">{result.error}</p>
+            <p className="mb-3 text-[12px] leading-snug text-rose-200/90 [overflow-wrap:anywhere]">{result.error}</p>
           ) : null}
 
           {result?.lowSignal && s && !s.lowSignalSummary ? (

@@ -29,6 +29,58 @@ function mergeDotenvFile(filePath: string, into: Record<string, string>) {
   }
 }
 
+/**
+ * Vite `loadEnv(..., '')` ends by copying `process.env` over parsed files, so an empty
+ * `OPENAI_API_KEY` in the OS environment wins over `.env.local` → OpenAI sees `Bearer ` (invalid).
+ * Re-read these keys from disk in normal precedence (later files override).
+ */
+const AI_ENV_KEYS = new Set([
+  'OPENAI_API_KEY',
+  'AI_API_KEY',
+  'OPENAI_API_ENDPOINT',
+  'AI_ENDPOINT',
+  'OPENAI_MODEL',
+  'AI_MODEL',
+  'NEWS_RSS_FEEDS',
+]);
+
+function mergeDotenvWhitelistOverwrite(filePath: string, into: Record<string, string>, allowed: Set<string>) {
+  if (!existsSync(filePath)) return;
+  try {
+    const text = readFileSync(filePath, 'utf8');
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (!key || !allowed.has(key)) continue;
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      into[key] = val;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadAiSecretsFromDisk(mode: string, rootDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const chain = [
+    path.join(rootDir, 'backend', '.env'),
+    path.join(rootDir, '.env'),
+    path.join(rootDir, '.env.local'),
+    path.join(rootDir, `.env.${mode}`),
+    path.join(rootDir, `.env.${mode}.local`),
+  ];
+  for (const p of chain) {
+    mergeDotenvWhitelistOverwrite(p, out, AI_ENV_KEYS);
+  }
+  return out;
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -41,7 +93,8 @@ function readBody(req: IncomingMessage): Promise<string> {
 export default defineConfig(({ mode }) => {
   const envFromFiles = { ...loadEnv(mode, __dirname, '') };
   mergeDotenvFile(path.join(__dirname, 'backend', '.env'), envFromFiles);
-  const devAiEnv = (): NodeJS.ProcessEnv => ({ ...process.env, ...envFromFiles });
+  const aiSecretsFromDisk = loadAiSecretsFromDisk(mode, __dirname);
+  const devAiEnv = (): NodeJS.ProcessEnv => ({ ...process.env, ...envFromFiles, ...aiSecretsFromDisk });
 
   const baseFromEnv = envFromFiles.VITE_BASE?.trim();
   const resolvedBase =

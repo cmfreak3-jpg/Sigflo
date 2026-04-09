@@ -1,8 +1,8 @@
 import type { MarketMode, TradeSide } from '@/types/trade';
 
 /**
- * Browser-only practice position for the trade UI. Long/Short does not call the exchange;
- * balances and equity on Bybit are unchanged. For real positions, use Portfolio (read from Bybit).
+ * Shape used for open-position UI (chart overlays, active card): either synthesized from Bybit snapshots
+ * or derived for display. Exchange-backed rows come from account sync; sizing for new orders is separate.
  */
 export type SimulatedActivePosition = {
   id: string;

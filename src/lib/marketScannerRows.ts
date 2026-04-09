@@ -9,6 +9,8 @@ export type TrackedSymbol = (typeof TRACKED_SYMBOLS)[number];
 
 /** How many symbols to show (top 24h % gainers among USDT linear perpetuals). */
 export const GAINERS_LIMIT = 15;
+/** Top 24h % losers (negative movers) merged into the Movers tab for short-bias tape. */
+export const LOSERS_LIMIT = 10;
 /** @deprecated Use GAINERS_LIMIT */
 export const TRENDING_LIMIT = GAINERS_LIMIT;
 
@@ -25,6 +27,22 @@ export function rankTopGainers(tickers: SymbolTicker[], limit: number): SymbolTi
     .filter((t) => t.symbol.endsWith('USDT') && t.price24hPcnt > 0)
     .sort((a, b) => b.price24hPcnt - a.price24hPcnt)
     .slice(0, limit);
+}
+
+/** Deepest 24h % drops among USDT linear perpetuals (excludes flat / positive). */
+export function rankTopLosers(tickers: SymbolTicker[], limit: number): SymbolTicker[] {
+  return [...tickers]
+    .filter((t) => t.symbol.endsWith('USDT') && t.price24hPcnt < 0)
+    .sort((a, b) => a.price24hPcnt - b.price24hPcnt)
+    .slice(0, limit);
+}
+
+/** Gainers first, then worst losers not already listed (for Movers grid + WS extras). */
+export function rankMoversUniverse(tickers: SymbolTicker[]): SymbolTicker[] {
+  const gainers = rankTopGainers(tickers, GAINERS_LIMIT);
+  const sym = new Set(gainers.map((t) => t.symbol));
+  const losers = rankTopLosers(tickers, LOSERS_LIMIT).filter((t) => !sym.has(t.symbol));
+  return [...gainers, ...losers];
 }
 
 /** Above this 24h move %, synthetic Movers treat the tape as overextended (rare among “only green” lists). */
@@ -67,16 +85,28 @@ function buildSyntheticTrendingSignal(symbol: string, pair: string, ticker: Symb
   const setupScoreLabel = getSetupScoreLabel(setupScore);
   const aiExplanation =
     setupType === 'overextended'
-      ? `Extended 24h move (+${movePct.toFixed(1)}%): participation is hot — mean-reversion risk rises with the extension.`
+      ? up
+        ? `Extended 24h move (+${movePct.toFixed(1)}%): participation is hot — mean-reversion risk rises with the extension.`
+        : `Heavy 24h selloff (−${movePct.toFixed(1)}%): selling is stretched — sharp bounces can rip if shorts pile in late.`
       : setupType === 'pullback'
-        ? `Strong 24h bid (+${movePct.toFixed(1)}%) with tape still constructive — watch whether dips find buyers.`
-        : `Gaining tape (+${movePct.toFixed(1)}%): trend and flow are improving; next leg depends on hold vs fade.`;
+        ? up
+          ? `Strong 24h bid (+${movePct.toFixed(1)}%) with tape still constructive — watch whether dips find buyers.`
+          : `Weak 24h tape (−${movePct.toFixed(1)}%) — bounces stay fragile until flow improves.`
+        : up
+          ? `Gaining tape (+${movePct.toFixed(1)}%): trend and flow are improving; next leg depends on hold vs fade.`
+          : `Soft 24h tape (−${movePct.toFixed(1)}%): flow is soft; next leg depends on support vs continuation.`;
   const watchCue =
     setupType === 'overextended'
-      ? 'rejection or continuation'
+      ? up
+        ? 'rejection or continuation'
+        : 'capitulation or dead-cat bounce'
       : setupType === 'pullback'
-        ? 'buyers holding dip bids vs rollover'
-        : 'hold vs fade — next candle confirms bias';
+        ? up
+          ? 'buyers holding dip bids vs rollover'
+          : 'sellers capping rallies vs breakdown'
+        : up
+          ? 'hold vs fade — next candle confirms bias'
+          : 'pressure vs bounce — next candle confirms bias';
   return {
     id: `trend-${symbol}`,
     pair,
@@ -109,19 +139,20 @@ function pickSignalForMarket(
 
 /** When the engine has not emitted for a tracked pair yet — live ticker still drives row prices. */
 export function buildTrackedFallbackSignal(pair: string, symbol: string): CryptoSignal {
+  /** Sum under 45 → scanner `idle` / Feed "Setup forming" until detectors qualify a live row. */
   const breakdown: SetupScoreBreakdown = {
-    trendAlignment: 12,
-    momentumQuality: 9,
-    structureQuality: 11,
-    volumeConfirmation: 7,
-    riskConditions: 7,
+    trendAlignment: 10,
+    momentumQuality: 8,
+    structureQuality: 9,
+    volumeConfirmation: 6,
+    riskConditions: 6,
   };
   const setupScore = calculateSetupScore(breakdown);
   return {
     id: `tracked-${symbol}`,
     pair,
     side: 'long',
-    biasLabel: 'Developing',
+    biasLabel: 'Forming',
     setupType: 'breakout',
     setupScore,
     setupScoreLabel: getSetupScoreLabel(setupScore),
@@ -205,7 +236,7 @@ export function buildMarketScannerRows(
   tickersBySymbol: Record<string, SymbolTicker>,
 ): MarketScannerRow[] {
   const all = Object.values(tickersBySymbol);
-  const ranked = rankTopGainers(all, GAINERS_LIMIT);
+  const ranked = rankMoversUniverse(all);
 
   return ranked.map((t) => {
     const symbol = t.symbol;

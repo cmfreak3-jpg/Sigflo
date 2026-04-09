@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 
 type Props = {
   symbol: string; // e.g. BTCUSDT
-  interval: '5' | '15' | '60' | '240' | 'D' | 'W';
+  interval: '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
 };
 
 function tvInterval(interval: Props['interval']): string {
+  if (interval === '1') return '1';
   if (interval === '5') return '5';
   if (interval === '15') return '15';
   if (interval === '60') return '60';

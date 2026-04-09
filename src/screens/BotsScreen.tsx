@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import { baseBots, shortActionLabel, statusTone } from '@/lib/bots';
+import { BOTS_RECENT_ACTIVITY_MAX, baseBots, shortActionLabel, statusTone } from '@/lib/bots';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import type { CryptoSignal } from '@/types/signal';
@@ -41,7 +41,8 @@ export default function BotsScreen() {
   const recentActivity = useMemo(() => {
     if (signals.length === 0) return [];
     const ordered = [...signals].sort((a, b) => b.setupScore - a.setupScore);
-    return [0, 1, 2].map((offset) => ordered[(tick + offset) % ordered.length]).filter(Boolean);
+    const n = Math.min(BOTS_RECENT_ACTIVITY_MAX, ordered.length);
+    return Array.from({ length: n }, (_, offset) => ordered[(tick + offset) % ordered.length]);
   }, [signals, tick]);
 
   const openBot = (botId: string) => {
@@ -67,12 +68,13 @@ export default function BotsScreen() {
         <section className="space-y-2">
           {botsWithSignal.map((bot) => {
             const signal = bot.signal;
-            if (!signal) return null;
-            const marketStatus = deriveMarketStatus(signal);
-            const uiState = uiSignalStateFromMarketStatus(marketStatus);
+            const hasSignal = signal != null;
+            const marketStatus = hasSignal ? deriveMarketStatus(signal) : null;
+            const uiState = marketStatus != null ? uiSignalStateFromMarketStatus(marketStatus) : 'setup_forming';
             const stateStyle = uiSignalStateClasses(uiState);
             const tone = statusTone(bot.status);
             const paused = bot.status === 'paused';
+            const cardMuted = paused || !hasSignal;
 
             return (
               <div
@@ -87,7 +89,7 @@ export default function BotsScreen() {
                 role="button"
                 tabIndex={0}
                 className={`group w-full rounded-2xl border bg-sigflo-surface p-3 text-left transition-all hover:-translate-y-[1px] active:scale-[0.985] ${
-                  paused
+                  cardMuted
                     ? 'border-white/[0.08] opacity-75'
                     : `${stateStyle.card} ${bot.status === 'active' ? 'shadow-[0_0_18px_-12px_rgba(0,255,200,0.6)]' : ''}`
                 }`}
@@ -104,7 +106,9 @@ export default function BotsScreen() {
                 </div>
 
                 <p className="mt-2 text-xs text-sigflo-muted">Watching: {bot.watchedPairs.join(', ')}</p>
-                <p className="mt-0.5 text-xs text-sigflo-muted">Last action: {shortActionLabel(signal)}</p>
+                <p className="mt-0.5 text-xs text-sigflo-muted">
+                  Last action: {hasSignal ? shortActionLabel(signal) : 'Waiting for live signals'}
+                </p>
 
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-xs font-semibold text-cyan-200 transition-transform group-hover:translate-x-0.5">Open →</span>
