@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { getAccountSnapshots, getClosedTrades } from '@/services/api/portfolioClient';
 import type { ClosedTradeRow, ExchangeSnapshot } from '@/types/integrations';
 
@@ -9,14 +10,19 @@ export type RefreshAccountSnapshotsOptions = {
 
 /**
  * Loads `/api/portfolio/*` snapshots. Optional `pollMs` refreshes in the background while the tab is visible.
+ *
+ * Defers the initial fetch until Supabase auth has finished restoring the session so the
+ * `Authorization` header is present on the very first request (avoids a 401 race on page load).
  */
 export function useAccountSnapshot(options?: { pollMs?: number }) {
   const pollMs = options?.pollMs ?? 0;
+  const { loading: authLoading, session } = useAuth();
   const [items, setItems] = useState<ExchangeSnapshot[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTradeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const hasFetchedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -59,12 +65,17 @@ export function useAccountSnapshot(options?: { pollMs?: number }) {
     return snapshots;
   }, []);
 
+  // Fetch once auth has resolved (or immediately when auth is not configured).
+  // Re-fetch when the session identity changes (sign-in / sign-out).
+  const sessionUid = session?.user?.id ?? null;
   useEffect(() => {
+    if (authLoading) return;
+    hasFetchedRef.current = true;
     void refresh();
-  }, [refresh]);
+  }, [authLoading, sessionUid, refresh]);
 
   useEffect(() => {
-    if (pollMs <= 0) return;
+    if (pollMs <= 0 || !hasFetchedRef.current) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       void refresh({ silent: true });
@@ -74,7 +85,7 @@ export function useAccountSnapshot(options?: { pollMs?: number }) {
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === 'visible') void refresh({ silent: true });
+      if (document.visibilityState === 'visible' && hasFetchedRef.current) void refresh({ silent: true });
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
