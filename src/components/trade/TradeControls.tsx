@@ -250,6 +250,15 @@ export function TradeControls(props: TradeControlsProps) {
         </>
       ) : null}
 
+      {!isManageMode ? (
+        <ScannerInsightCard
+          signal={selectedSignal}
+          status={scannerStatus}
+          tradeScore={metrics.riskSummary.tradeScore}
+          groundedContext={groundedAiContext}
+        />
+      ) : null}
+
       <OrderInputsCard
         market={market}
         balanceUsd={metrics.balanceUsd}
@@ -298,15 +307,6 @@ export function TradeControls(props: TradeControlsProps) {
             : undefined
         }
       />
-
-      {!isManageMode ? (
-        <ScannerInsightCard
-          signal={selectedSignal}
-          status={scannerStatus}
-          tradeScore={metrics.riskSummary.tradeScore}
-          groundedContext={groundedAiContext}
-        />
-      ) : null}
 
       {!isManageMode ? (
         <PreTradeWarningCard
