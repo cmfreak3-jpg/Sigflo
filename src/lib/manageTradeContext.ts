@@ -8,6 +8,8 @@ export type ManageTradePositionContext = {
   entryPrice: number;
   markPrice?: number;
   posSize?: number;
+  /** From portfolio deep link when known; exchange snapshot overrides in Trade UI when connected. */
+  leverage?: number;
 };
 
 export function parseManageTradeContext(params: URLSearchParams): ManageTradePositionContext | null {
@@ -31,6 +33,11 @@ export function parseManageTradeContext(params: URLSearchParams): ManageTradePos
   const posSize = ps != null && ps !== '' ? Number(ps) : NaN;
   const posSizeOut = Number.isFinite(posSize) ? posSize : undefined;
 
+  const levRaw = params.get('leverage');
+  const levParsed = levRaw != null && levRaw !== '' ? Number(levRaw) : NaN;
+  const leverage =
+    Number.isFinite(levParsed) && levParsed > 0 ? Math.min(200, Math.round(levParsed)) : undefined;
+
   return {
     pair,
     side: sideRaw as TradeSide,
@@ -38,6 +45,7 @@ export function parseManageTradeContext(params: URLSearchParams): ManageTradePos
     entryPrice,
     markPrice,
     posSize: posSizeOut,
+    leverage,
   };
 }
 

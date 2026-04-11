@@ -7,8 +7,8 @@ import type {
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
 
-function entryState(status: MarketRowStatus, tradeScore: number): 'Too early' | 'Ready' | 'Too late' | 'Too risky' {
-  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
+function entryState(status: MarketRowStatus, tradeScore: number): 'Too early' | 'Ready' | 'Too late' | 'Weak timing' {
+  if (status === 'overextended' || tradeScore < 45) return 'Weak timing';
   if (status === 'triggered' && tradeScore >= 65) return 'Ready';
   if (status === 'triggered' && tradeScore < 55) return 'Too late';
   if (status === 'idle') return 'Too early';

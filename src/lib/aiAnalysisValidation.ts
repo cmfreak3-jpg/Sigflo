@@ -65,6 +65,15 @@ function textViolatesIndicatorAllowlist(text: string, allowed: string[]): boolea
   return false;
 }
 
+/** Long-form thesis only: hard-banned indicators only (no RSI/volume prose checks — they false-fail normal copy). */
+function deepTextViolatesHardBannedIndicators(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (const term of BANNED_TERMS_DEFAULT) {
+    if (lower.includes(term.toLowerCase())) return true;
+  }
+  return false;
+}
+
 export type ValidationResult = { ok: true } | { ok: false; reason: string };
 
 export function validateGroundedStructuredAnalysis(
@@ -87,21 +96,33 @@ export function validateGroundedStructuredAnalysis(
 }
 
 /**
- * Deep thesis: block disallowed indicators; require decimal-looking prices (2+ dp) to match allowlist
- * when we have any known levels (avoids hallucinated $123.45 figures).
+ * Deep thesis: block only hard-banned indicators (MACD, Fib, etc.). Do not apply the same RSI/EMA/volume
+ * substring rules as quick JSON — models say "volume" in plain English and we would fall back to offline
+ * draft every time.
+ *
+ * Price check: decimals with 2+ fractional digits must either sit in a loose band around packaged levels
+ * (so we still catch hallucinated levels near the trade) or be ignored (years like 2024.12, tiny ratios).
  */
 export function validateDeepMarkdownGrounded(body: string, ctx: GroundedMarketContext): ValidationResult {
-  if (textViolatesIndicatorAllowlist(body, ctx.allowedIndicatorTerms)) {
+  if (deepTextViolatesHardBannedIndicators(body)) {
     return { ok: false, reason: 'deep_indicator_violation' };
   }
-  if (ctx.allowedPriceLevels.length === 0) return { ok: true };
+  const allowed = ctx.allowedPriceLevels;
+  if (allowed.length === 0) return { ok: true };
+  const minL = Math.min(...allowed);
+  const maxL = Math.max(...allowed);
+  const envelopeLow = Math.max(0, minL * 0.05);
+  const envelopeHigh = maxL * 20;
   const re = /\b\d+\.\d{2,12}\b/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body))) {
-    const n = Number(m[0]);
+    const raw = m[0];
+    if (/^(?:19|20)\d{2}\.\d{2}$/.test(raw)) continue;
+    const n = Number(raw);
     if (!Number.isFinite(n)) continue;
-    if (!levelMatchesAllowed(n, ctx.allowedPriceLevels, 0.002, 1e-6)) {
-      return { ok: false, reason: `deep_unlisted_price:${m[0]}` };
+    if (n < envelopeLow || n > envelopeHigh) continue;
+    if (!levelMatchesAllowed(n, allowed, 0.012, 1e-5)) {
+      return { ok: false, reason: `deep_unlisted_price:${raw}` };
     }
   }
   return { ok: true };

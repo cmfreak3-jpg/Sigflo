@@ -85,6 +85,32 @@ function aggregateStablesAndPnl(snapshots: ExchangeSnapshot[]) {
   return { stables, unrealized, connected };
 }
 
+/**
+ * Book equity for one exchange snapshot. Prefer `accountBreakdown.overview.totalEquity` (Bybit UTA / venue
+ * equity) so exposure % matches the account the API reports. Fallback: stable balances + sum of position uPnL
+ * (legacy — often understates UTA equity and inflated exposure %).
+ */
+function equityUsdForSnapshot(s: ExchangeSnapshot): number {
+  if (s.status !== 'connected') return 0;
+  const te = s.accountBreakdown?.overview?.totalEquity;
+  if (te != null && Number.isFinite(te) && te > 0) return te;
+  let st = 0;
+  for (const b of s.balances) {
+    if (STABLE_ASSETS.has(b.asset.toUpperCase())) st += b.total;
+  }
+  let up = 0;
+  for (const p of s.positions) up += p.unrealizedPnl ?? 0;
+  return Math.max(0, st + up);
+}
+
+function totalPortfolioEquityUsd(snapshots: ExchangeSnapshot[]): number {
+  let sum = 0;
+  for (const s of snapshots) {
+    sum += equityUsdForSnapshot(s);
+  }
+  return sum;
+}
+
 function flattenPositions(snapshots: ExchangeSnapshot[]): Array<PositionItem & { exchange: ExchangeId }> {
   const out: Array<PositionItem & { exchange: ExchangeId }> = [];
   for (const s of snapshots) {
@@ -258,10 +284,10 @@ export default function PortfolioScreen() {
 
   const feedOpportunityCount = useMemo(() => signals.filter(isFeedActionableOpportunity).length, [signals]);
 
-  const { stables, unrealized, connected } = useMemo(() => aggregateStablesAndPnl(snapshots), [snapshots]);
+  const { unrealized, connected } = useMemo(() => aggregateStablesAndPnl(snapshots), [snapshots]);
   const positions = useMemo(() => flattenPositions(snapshots), [snapshots]);
   const multiBookLine = useMemo(() => multiPositionBookLine(positions), [positions]);
-  const netWorth = connected ? stables + unrealized : 0;
+  const netWorth = useMemo(() => (connected ? totalPortfolioEquityUsd(snapshots) : 0), [connected, snapshots]);
   const todayPnl = useMemo(() => (connected ? closedPnlTodayUtc(closedTrades) : 0), [connected, closedTrades]);
   const todayPct = connected
     ? (todayPnl / Math.max(Math.abs(netWorth - todayPnl), Math.max(Math.abs(netWorth), 1))) * 100
@@ -639,6 +665,7 @@ export default function PortfolioScreen() {
                       entryPrice: p.entryPrice,
                       posSize: p.size,
                       markPrice: current,
+                      ...(p.leverage != null && p.leverage > 0 ? { leverage: p.leverage } : {}),
                     }
                   : undefined;
               const tradeQuery = buildPortfolioPositionTradeQuery(p.symbol, p.side, tradeExtras);

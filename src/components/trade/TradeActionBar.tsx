@@ -136,12 +136,12 @@ export function ChartInlineTradeButtons({
     const showTimingHere = !omitDockTimingChip && dockMeta.timing.state !== 'developing';
     return (
       <div
-        className={`grid w-full min-w-0 items-start gap-x-1 sm:gap-x-1.5 ${
+        className={`grid w-full min-w-0 items-center gap-x-1 sm:gap-x-1.5 ${
           showTimingHere ? 'grid-cols-[max-content_minmax(0,auto)_minmax(0,1fr)]' : 'grid-cols-[max-content_minmax(0,auto)]'
         }`}
       >
-        <div className="mt-2 w-max max-w-none justify-self-start sm:mt-2.5">{buttons}</div>
-        <div className="mt-2 min-w-0 max-w-full justify-self-start sm:mt-2.5">
+        <div className="w-max max-w-none justify-self-start self-center">{buttons}</div>
+        <div className="min-w-0 max-w-full justify-self-start self-center">
           <ChartDockScoreGrid dockMeta={dockMeta} />
         </div>
         {showTimingHere ? (

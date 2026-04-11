@@ -8,3 +8,6 @@
 /** Expanded / collapsed plot heights (px); keep in sync if layout changes. */
 export const TRADE_CHART_PLOT_EXPANDED_PX = 232;
 export const TRADE_CHART_PLOT_COLLAPSED_PX = 96;
+
+/** Bot focus cockpit — primary chart plot height (px). */
+export const BOT_FOCUS_CHART_PLOT_PX = 268;

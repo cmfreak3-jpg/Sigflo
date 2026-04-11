@@ -35,7 +35,9 @@ export function useBotStatuses() {
 
   const togglePause = (botId: string) => {
     const curr = resolvedMap[botId] ?? 'active';
-    setBotStatus(botId, curr === 'paused' ? 'active' : 'paused');
+    const base = baseBots.find((b) => b.id === botId);
+    const resumeAs = base?.status ?? 'active';
+    setBotStatus(botId, curr === 'paused' ? resumeAs : 'paused');
   };
 
   return { statusMap: resolvedMap, setBotStatus, togglePause };

@@ -25,20 +25,23 @@ export function useAccountSnapshot(options?: { pollMs?: number }) {
     };
   }, []);
 
-  const refresh = useCallback(async (opts?: RefreshAccountSnapshotsOptions) => {
+  const refresh = useCallback(async (opts?: RefreshAccountSnapshotsOptions): Promise<ExchangeSnapshot[]> => {
     const silent = opts?.silent === true;
     if (!silent) {
       setLoading(true);
       setError(null);
     }
+    let snapshots: ExchangeSnapshot[] = [];
     try {
       const [snapRes, closedRes] = await Promise.allSettled([getAccountSnapshots(), getClosedTrades()]);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return snapshots;
 
       const errs: string[] = [];
 
-      if (snapRes.status === 'fulfilled') setItems(snapRes.value);
-      else {
+      if (snapRes.status === 'fulfilled') {
+        setItems(snapRes.value);
+        snapshots = snapRes.value;
+      } else {
         setItems([]);
         errs.push(snapRes.reason instanceof Error ? snapRes.reason.message : 'Failed to load account snapshot.');
       }
@@ -53,6 +56,7 @@ export function useAccountSnapshot(options?: { pollMs?: number }) {
     } finally {
       if (!silent && mountedRef.current) setLoading(false);
     }
+    return snapshots;
   }, []);
 
   useEffect(() => {

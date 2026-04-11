@@ -14,6 +14,8 @@ export type PositionActionsBarProps = {
    * (after choosing a percentage on the partial slider — the slider does not submit on release).
    */
   onPartialClose: (fraction: number) => void;
+  /** Linear futures: open manage-position screen (TP/SL, add size). */
+  onManagePosition?: () => void;
   disabled?: boolean;
   className?: string;
 };
@@ -25,6 +27,7 @@ export function PositionActionsBar({
   variant = 'dock',
   onCloseAll,
   onPartialClose,
+  onManagePosition,
   disabled = false,
   className = '',
 }: PositionActionsBarProps) {
@@ -69,6 +72,17 @@ export function PositionActionsBar({
           Close all
         </button>
       </div>
+
+      {onManagePosition ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onManagePosition}
+          className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-cyan-400/28 bg-cyan-500/[0.07] text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-100/90 transition hover:bg-cyan-500/12 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
+        >
+          Manage position
+        </button>
+      ) : null}
 
       <div className="rounded border border-white/[0.06] bg-black/35 px-1 py-0.5 ring-1 ring-white/[0.02]">
         <button

@@ -111,6 +111,68 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   }
 });
 
+const linearTradingStopSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  positionIdx: z.number().int().min(0).max(2).default(0),
+  /** Use `"0"` to clear TP on the position (Bybit convention). */
+  takeProfit: z.string().min(1).max(48),
+  /** Use `"0"` to clear SL on the position (Bybit convention). */
+  stopLoss: z.string().min(1).max(48),
+});
+
+tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = linearTradingStopSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const integrations = await listIntegrations(req.user.userId);
+  const row = integrations.find((i) => i.exchange === 'bybit');
+  if (!row) {
+    res.status(400).json({ error: 'Connect Bybit in Account first.' });
+    return;
+  }
+
+  const creds = {
+    apiKey: decryptText(row.encryptedKey),
+    apiSecret: decryptText(row.encryptedSecret),
+    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+  };
+
+  try {
+    await bybitAdapter.ensureTradeEnabled(creds);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    res.status(403).json({ error: msg });
+    return;
+  }
+
+  const p = parsed.data;
+  try {
+    await bybitAdapter.setLinearTradingStop(creds, {
+      symbol: p.symbol,
+      positionIdx: p.positionIdx,
+      takeProfit: p.takeProfit.trim(),
+      stopLoss: p.stopLoss.trim(),
+    });
+    res.json({
+      ok: true,
+      exchange: 'bybit',
+      note: 'TP/SL updated on Bybit (full position, market trigger) — confirm on the exchange.',
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    log('warn', 'Bybit trading-stop failed.', { error: msg });
+    res.status(400).json({ error: msg });
+  }
+});
+
 tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   if (!req.user) {
     res.status(401).json({ error: 'Unauthorized' });

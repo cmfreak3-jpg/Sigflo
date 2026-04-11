@@ -6,6 +6,7 @@ import { SplashScreen } from '@/components/layout/SplashScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
 import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
 import BotDetailScreen from '@/screens/BotDetailScreen';
+import BotFocusScreen from '@/screens/BotFocusScreen';
 import BotsScreen from '@/screens/BotsScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
 import PortfolioScreen from '@/screens/PortfolioScreen';
@@ -43,6 +44,7 @@ export default function App() {
         <Route path={FEED_ROUTE} element={<FeedScreen />} />
         <Route path="/markets" element={<MarketsScreen />} />
         <Route path="/bots" element={<BotsScreen />} />
+        <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
         <Route path="/bots/:botId" element={<BotDetailScreen />} />
         <Route path="/portfolio" element={<PortfolioScreen />} />
         <Route path="/profile" element={<ProfileScreen />} />

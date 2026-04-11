@@ -45,6 +45,8 @@ export type TradeControlsProps = {
   scannerStatus: MarketRowStatus;
   amountUsd: number;
   leverage: number;
+  /** Manage mode: exchange / URL leverage for the open leg (PnL banner); sizing still uses `leverage`. */
+  managePositionLeverage?: number;
   side: TradeSide;
   stopStr: string;
   targetStr: string;
@@ -76,6 +78,14 @@ export type TradeControlsProps = {
   assetTransferHref?: string | null;
   /** Active chart interval label for grounded AI context (e.g. 15m, 1H). */
   chartInterval: string;
+  /** Manage + linear: apply SL/TP to the open leg on Bybit (`null` when N/A). */
+  manageFuturesTpSl?: {
+    canApply: boolean;
+    pending: boolean;
+    onApply: () => void;
+  } | null;
+  /** When true, hide the legacy manage PnL + position card (replaced by Position control panel). */
+  suppressLegacyManageHero?: boolean;
 };
 
 export function TradeControls(props: TradeControlsProps) {
@@ -95,6 +105,7 @@ export function TradeControls(props: TradeControlsProps) {
     scannerStatus,
     amountUsd,
     leverage,
+    managePositionLeverage,
     side,
     stopStr,
     targetStr,
@@ -118,7 +129,11 @@ export function TradeControls(props: TradeControlsProps) {
     utaWalletBalanceUsd,
     assetTransferHref,
     chartInterval,
+    manageFuturesTpSl,
+    suppressLegacyManageHero = false,
   } = props;
+
+  const passLevelsToOrderCard = !isManageMode || (isManageMode && market === 'futures');
 
   const groundedAiContext = useMemo(
     () =>
@@ -182,7 +197,7 @@ export function TradeControls(props: TradeControlsProps) {
         </div>
       ) : null}
 
-      {isManageMode && managePnlDisplay && manageCtx ? (
+      {isManageMode && managePnlDisplay && manageCtx && !suppressLegacyManageHero ? (
         <>
           <div
             className={`rounded-2xl border px-3 py-2.5 ${
@@ -208,9 +223,9 @@ export function TradeControls(props: TradeControlsProps) {
           </div>
           <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface/95 p-3.5">
             <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
-              <span className="text-lg font-bold text-white">{manageCtx.pair}</span>
+              <span className="min-w-0 truncate text-lg font-bold text-white">{manageCtx.pair}</span>
               <span
-                className={`rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
                   manageCtx.side === 'long' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
                 }`}
               >
@@ -226,9 +241,15 @@ export function TradeControls(props: TradeControlsProps) {
                 <dt className="text-sigflo-muted">Current</dt>
                 <dd className="mt-0.5 font-semibold tabular-nums text-white">${formatQuoteNumber(markForManage)}</dd>
               </div>
-              <div className="col-span-2">
+              <div>
                 <dt className="text-sigflo-muted">Size</dt>
                 <dd className="mt-0.5 font-semibold text-white">{manageSizeSummary(manageCtx)}</dd>
+              </div>
+              <div>
+                <dt className="text-sigflo-muted">Leverage</dt>
+                <dd className="mt-0.5 font-semibold tabular-nums text-white">
+                  {market === 'futures' ? `${managePositionLeverage ?? leverage}×` : '1× spot'}
+                </dd>
               </div>
               <div className="col-span-2">
                 <dt className="text-sigflo-muted">Unrealized PnL (plan)</dt>
@@ -282,10 +303,10 @@ export function TradeControls(props: TradeControlsProps) {
         utaUnrealizedPnlUsd={utaUnrealizedPnlUsd}
         utaWalletBalanceUsd={utaWalletBalanceUsd}
         assetTransferHref={assetTransferHref}
-        stopInput={!isManageMode ? stopStr : undefined}
-        takeProfitInput={!isManageMode ? targetStr : undefined}
-        onStopInputChange={!isManageMode ? onStopStrChange : undefined}
-        onTakeProfitInputChange={!isManageMode ? onTargetStrChange : undefined}
+        stopInput={passLevelsToOrderCard ? stopStr : undefined}
+        takeProfitInput={passLevelsToOrderCard ? targetStr : undefined}
+        onStopInputChange={passLevelsToOrderCard ? onStopStrChange : undefined}
+        onTakeProfitInputChange={passLevelsToOrderCard ? onTargetStrChange : undefined}
         compactStats={
           !isManageMode
             ? {
@@ -298,6 +319,23 @@ export function TradeControls(props: TradeControlsProps) {
             : undefined
         }
       />
+
+      {manageFuturesTpSl ? (
+        <div className="rounded-xl border border-white/[0.08] bg-black/22 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Exchange TP / SL</p>
+          <p className="mt-1 text-[10px] leading-snug text-sigflo-muted/90">
+            Full-position triggers on Bybit (market, last price). Empty fields clear that leg. Confirm on the exchange.
+          </p>
+          <button
+            type="button"
+            disabled={!manageFuturesTpSl.canApply || manageFuturesTpSl.pending}
+            onClick={manageFuturesTpSl.onApply}
+            className="mt-2.5 w-full rounded-xl border border-[#00ffc8]/35 bg-[#00ffc8]/12 py-2.5 text-xs font-bold text-[#00ffc8] transition hover:bg-[#00ffc8]/18 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {manageFuturesTpSl.pending ? 'Updating…' : 'Apply TP / SL on exchange'}
+          </button>
+        </div>
+      ) : null}
 
       {!isManageMode ? (
         <ScannerInsightCard

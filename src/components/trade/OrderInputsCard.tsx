@@ -60,19 +60,15 @@ function sliderIndexToAmountUsd(idx: number, amountMax: number, indexMax: number
   return roundUsd(Math.min(amountMax, Math.max(0, raw)));
 }
 
-/** Stop loss: adverse move from entry as % of price (0–100). */
-const STOP_LOSS_DISTANCE_PCT_CHIPS = [0, 5, 10, 15, 25, 50, 75, 100] as const;
+/** Stop loss slider: adverse move from entry (0–100%). */
+const SL_PCT_SLIDER_MAX = 100;
 
-/** Take profit: favorable move from entry (percent → internal bps: 1 bp = 0.01%). */
-const TAKE_PROFIT_DISTANCE_PCT_CHIPS = [50, 100, 150, 300] as const;
+/** Take profit slider: favorable move from entry (%). */
+const TP_PCT_SLIDER_MIN = 5;
+const TP_PCT_SLIDER_MAX = 400;
 
 function distancePctToBps(pct: number): number {
   return Math.round(pct * 100);
-}
-
-/** Wider match band for large %-from-entry distances (manual price rarely lands on exact bps). */
-function bpsChipToleranceForTarget(targetBps: number): number {
-  return Math.max(100, Math.round(targetBps * 0.02));
 }
 
 function takeProfitPriceFromBps(entry: number, tradeSide: TradeSide, bps: number): number {
@@ -99,11 +95,6 @@ function impliedStopBps(entry: number, tradeSide: TradeSide, stop: number): numb
     tradeSide === 'long' ? ((entry - stop) / entry) * 10000 : ((stop - entry) / entry) * 10000;
   if (!Number.isFinite(raw)) return null;
   return Math.round(raw);
-}
-
-function bpsChipActive(implied: number | null, targetBps: number, tolerance = 12): boolean {
-  if (implied == null) return false;
-  return Math.abs(implied - targetBps) <= tolerance;
 }
 
 export function OrderInputsCard(props: {
@@ -267,6 +258,17 @@ export function OrderInputsCard(props: {
   const entryNum = entry != null && entry > 0 ? entry : null;
   const slBpsImplied = entryNum != null ? impliedStopBps(entryNum, side, stopN) : null;
   const tpBpsImplied = entryNum != null ? impliedTakeProfitBps(entryNum, side, tpN) : null;
+
+  const slSliderPct =
+    slEnabled && entryNum != null && slBpsImplied != null
+      ? Math.min(SL_PCT_SLIDER_MAX, Math.max(0, Math.round(slBpsImplied / 100)))
+      : 0;
+  const tpSliderPct =
+    !tpEnabled || entryNum == null
+      ? 100
+      : tpBpsImplied != null
+        ? Math.min(TP_PCT_SLIDER_MAX, Math.max(TP_PCT_SLIDER_MIN, Math.round(tpBpsImplied / 100)))
+        : 100;
 
   const levMax =
     market === 'futures'
@@ -598,7 +600,13 @@ export function OrderInputsCard(props: {
                 type="button"
                 role="switch"
                 aria-checked={slEnabled}
-                onClick={() => setSlEnabled((v) => !v)}
+                onClick={() => {
+                  setSlEnabled((v) => {
+                    const next = !v;
+                    if (!next) onStopInputChange?.('');
+                    return next;
+                  });
+                }}
                 className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
                   slEnabled ? 'bg-rose-500/35 ring-1 ring-rose-400/35' : 'bg-white/[0.08]'
                 }`}
@@ -620,51 +628,45 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Stop loss price"
             />
-            {((stopPctHint != null && Number.isFinite(stopPctHint)) ||
-              (entryNum != null && onStopInputChange)) ? (
-              <div className="flex min-h-0 w-full min-w-0 items-center gap-x-1 gap-y-0.5">
-                {stopPctHint != null && Number.isFinite(stopPctHint) ? (
-                  <p
-                    className={`shrink-0 text-[9px] font-semibold tabular-nums leading-none ${stopPctHint <= 0 ? 'text-rose-300' : 'text-sigflo-muted'}`}
+            {entryNum != null && onStopInputChange ? (
+              <div className="mt-1.5 space-y-1.5 rounded-xl border border-white/[0.07] bg-black/35 px-2.5 py-2 ring-1 ring-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
+                    % from entry (adverse)
+                  </span>
+                  <span
+                    className={`text-[12px] font-bold tabular-nums ${slEnabled ? 'text-rose-200' : 'text-sigflo-muted'}`}
                   >
-                    {stopPctHint >= 0 ? '+' : ''}
-                    {stopPctHint.toFixed(2)}%
-                  </p>
-                ) : null}
-                {entryNum != null && onStopInputChange ? (
-                  <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-px [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-0.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
-                    <div className="flex w-max flex-nowrap gap-0.5 pr-0.5">
-                      {STOP_LOSS_DISTANCE_PCT_CHIPS.map((pct) => {
-                        const bps = distancePctToBps(pct);
-                        const active =
-                          slEnabled && bpsChipActive(slBpsImplied, bps, bpsChipToleranceForTarget(bps));
-                        return (
-                          <button
-                            key={`sl-pct-${pct}`}
-                            type="button"
-                            title={
-                              pct === 0
-                                ? 'Stop at entry (0% offset)'
-                                : `Stop ${pct}% from entry (adverse side)`
-                            }
-                            onClick={() => {
-                              setSlEnabled(true);
-                              onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, bps)));
-                            }}
-                            className={`shrink-0 rounded border px-[3px] py-px text-[7px] font-bold tabular-nums leading-none transition sm:text-[8px] ${
-                              active
-                                ? 'border-rose-400/50 bg-rose-500/12 text-rose-200 ring-1 ring-rose-400/15'
-                                : 'border-white/[0.06] bg-white/[0.03] text-sigflo-muted hover:border-rose-400/25 hover:bg-rose-500/10 hover:text-rose-100'
-                            }`}
-                          >
-                            {pct === 0 ? '0%' : `−${pct}%`}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
+                    {slEnabled ? `−${slSliderPct}%` : '—'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={SL_PCT_SLIDER_MAX}
+                  step={1}
+                  disabled={!slEnabled}
+                  value={slSliderPct}
+                  aria-label="Stop loss percent from entry on adverse side"
+                  onChange={(e) => {
+                    const pct = Number(e.target.value);
+                    setSlEnabled(true);
+                    onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))));
+                  }}
+                  className="sigflo-level-slider sigflo-level-slider--rose w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
+                  <span>0% (entry)</span>
+                  <span>{SL_PCT_SLIDER_MAX}% max</span>
+                </div>
               </div>
+            ) : stopPctHint != null && Number.isFinite(stopPctHint) ? (
+              <p
+                className={`mt-1 text-[9px] font-semibold tabular-nums leading-none ${stopPctHint <= 0 ? 'text-rose-300' : 'text-sigflo-muted'}`}
+              >
+                {stopPctHint >= 0 ? '+' : ''}
+                {stopPctHint.toFixed(2)}%
+              </p>
             ) : null}
           </div>
           <div className="space-y-1">
@@ -674,7 +676,13 @@ export function OrderInputsCard(props: {
                 type="button"
                 role="switch"
                 aria-checked={tpEnabled}
-                onClick={() => setTpEnabled((v) => !v)}
+                onClick={() => {
+                  setTpEnabled((v) => {
+                    const next = !v;
+                    if (!next) onTakeProfitInputChange?.('');
+                    return next;
+                  });
+                }}
                 className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
                   tpEnabled ? 'bg-emerald-500/35 ring-1 ring-emerald-400/35' : 'bg-white/[0.08]'
                 }`}
@@ -696,47 +704,45 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Take profit price"
             />
-            {((tpPctHint != null && Number.isFinite(tpPctHint)) ||
-              (entryNum != null && onTakeProfitInputChange)) ? (
-              <div className="flex min-h-0 w-full min-w-0 items-center gap-x-1 gap-y-0.5">
-                {tpPctHint != null && Number.isFinite(tpPctHint) ? (
-                  <p
-                    className={`shrink-0 text-[9px] font-semibold tabular-nums leading-none ${tpPctHint >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+            {entryNum != null && onTakeProfitInputChange ? (
+              <div className="mt-1.5 space-y-1.5 rounded-xl border border-white/[0.07] bg-black/35 px-2.5 py-2 ring-1 ring-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
+                    % from entry (favorable)
+                  </span>
+                  <span
+                    className={`text-[12px] font-bold tabular-nums ${tpEnabled ? 'text-emerald-200' : 'text-sigflo-muted'}`}
                   >
-                    {tpPctHint >= 0 ? '+' : ''}
-                    {tpPctHint.toFixed(2)}%
-                  </p>
-                ) : null}
-                {entryNum != null && onTakeProfitInputChange ? (
-                  <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-px [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-0.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
-                    <div className="flex w-max flex-nowrap gap-0.5 pr-0.5">
-                      {TAKE_PROFIT_DISTANCE_PCT_CHIPS.map((pct) => {
-                        const bps = distancePctToBps(pct);
-                        const active =
-                          tpEnabled && bpsChipActive(tpBpsImplied, bps, bpsChipToleranceForTarget(bps));
-                        return (
-                          <button
-                            key={`tp-pct-${pct}`}
-                            type="button"
-                            title={`Take profit ${pct}% from entry`}
-                            onClick={() => {
-                              setTpEnabled(true);
-                              onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, bps)));
-                            }}
-                            className={`shrink-0 rounded border px-[3px] py-px text-[7px] font-bold tabular-nums leading-none transition sm:text-[8px] ${
-                              active
-                                ? 'border-emerald-400/50 bg-emerald-500/12 text-emerald-200 ring-1 ring-emerald-400/15'
-                                : 'border-white/[0.06] bg-white/[0.03] text-sigflo-muted hover:border-emerald-400/25 hover:bg-emerald-500/10 hover:text-emerald-100'
-                            }`}
-                          >
-                            +{pct}%
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
+                    {tpEnabled ? `+${tpSliderPct}%` : '—'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={TP_PCT_SLIDER_MIN}
+                  max={TP_PCT_SLIDER_MAX}
+                  step={1}
+                  disabled={!tpEnabled}
+                  value={tpSliderPct}
+                  aria-label="Take profit percent from entry on favorable side"
+                  onChange={(e) => {
+                    const pct = Number(e.target.value);
+                    setTpEnabled(true);
+                    onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))));
+                  }}
+                  className="sigflo-level-slider sigflo-level-slider--emerald w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
+                  <span>{TP_PCT_SLIDER_MIN}%</span>
+                  <span>{TP_PCT_SLIDER_MAX}%</span>
+                </div>
               </div>
+            ) : tpPctHint != null && Number.isFinite(tpPctHint) ? (
+              <p
+                className={`mt-1 text-[9px] font-semibold tabular-nums leading-none ${tpPctHint >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+              >
+                {tpPctHint >= 0 ? '+' : ''}
+                {tpPctHint.toFixed(2)}%
+              </p>
             ) : null}
           </div>
         </div>

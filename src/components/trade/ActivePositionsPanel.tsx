@@ -19,6 +19,8 @@ type ActivePositionsPanelProps = {
   exitAiModeLabel: string;
   exitStrategyLabel: string;
   scenarioSummary: string;
+  /** Linear futures: navigate to manage-position flow (TP/SL, add size, close ticket). */
+  onOpenManagePosition?: () => void;
 };
 
 export function ActivePositionsPanel({
@@ -32,6 +34,7 @@ export function ActivePositionsPanel({
   exitAiModeLabel,
   exitStrategyLabel,
   scenarioSummary,
+  onOpenManagePosition,
 }: ActivePositionsPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -64,19 +67,28 @@ export function ActivePositionsPanel({
         className="border-t border-[#00ffc8]/14 bg-gradient-to-b from-[#00ffc8]/[0.05] to-transparent px-1.5 py-1.5 sm:px-2 sm:py-2"
       >
         <div className="mx-auto flex max-w-lg flex-col gap-1.5">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-0.5">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3] sm:text-[10px]">
-                {header}
-              </span>
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-0.5">
+            <span className="min-w-0 truncate text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3] sm:text-[10px]">
+              {header}
+            </span>
+            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              {showExchangeFutures && onOpenManagePosition ? (
+                <button
+                  type="button"
+                  onClick={onOpenManagePosition}
+                  className="rounded-md border border-cyan-400/35 bg-cyan-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-cyan-100/95 transition hover:bg-cyan-500/14 sm:text-[9px]"
+                >
+                  Manage
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onRequestCloseAllModal}
+                className="rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
+              >
+                Close all
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onRequestCloseAllModal}
-              className="shrink-0 rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
-            >
-              Close all
-            </button>
           </div>
 
           <div className="flex flex-col gap-1.5">

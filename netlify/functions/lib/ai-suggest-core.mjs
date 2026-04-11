@@ -73,7 +73,7 @@ function actionFormatHint(action) {
 }
 
 function entryState(status, tradeScore) {
-  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
+  if (status === 'overextended' || tradeScore < 45) return 'Weak timing';
   if (status === 'triggered' && tradeScore >= 65) return 'Ready';
   if (status === 'triggered' && tradeScore < 55) return 'Too late';
   if (status === 'idle') return 'Too early';
@@ -108,7 +108,7 @@ function buildLocalResponse(req) {
   else if (status === 'developing') coach = 'Wait for confirmation before sizing up.';
   else if (timing === 'Too late') coach = 'Late relative to trigger - reduce size or wait for a fresh structure.';
   else if (timing === 'Too early') coach = 'Still early - let the setup prove itself before committing.';
-  else if (timing === 'Too risky') coach = 'Risk posture is elevated - tighten size or skip.';
+  else if (timing === 'Weak timing') coach = 'Entry timing is weak — tighten size or wait for a cleaner trigger.';
 
   return {
     headline: `Improve entry - ${signal.pair}`,

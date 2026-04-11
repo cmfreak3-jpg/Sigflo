@@ -63,6 +63,12 @@ export default function BotDetailScreen() {
             <span className={`h-1.5 w-1.5 rounded-full ${status === 'paused' ? 'bg-slate-500' : stateStyle.dot}`} />
             {tone.label}
           </p>
+          <Link
+            to={`/bots/${bot.id}/focus`}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-[rgba(0,200,120,0.35)] bg-[rgba(0,200,120,0.08)] py-2.5 text-sm font-semibold text-[#00E08A] transition hover:border-[rgba(0,200,120,0.5)] hover:bg-[rgba(0,200,120,0.12)] active:scale-[0.99]"
+          >
+            Open focus cockpit
+          </Link>
         </header>
 
         <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3 text-xs text-sigflo-muted">

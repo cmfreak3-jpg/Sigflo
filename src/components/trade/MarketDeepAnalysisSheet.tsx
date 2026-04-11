@@ -36,13 +36,19 @@ export function MarketDeepAnalysisSheet({
   tradeScoreRef.current = tradeScore;
   const contextRef = useRef(groundedContext);
   contextRef.current = groundedContext;
+  /**
+   * `signal` from Trade/Markets is often a new object each render (live model, same id) — do not put it in
+   * `loadDeep` deps or the open-sheet effect will clear + refetch constantly ("Full thesis" keeps refreshing).
+   */
+  const signalRef = useRef(signal);
+  signalRef.current = signal;
 
   const loadDeep = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const r = await requestDeepMarketAnalysis({
-        signal,
+        signal: signalRef.current,
         status,
         tradeScore: tradeScoreRef.current,
         context: contextRef.current,
@@ -53,7 +59,7 @@ export function MarketDeepAnalysisSheet({
     } finally {
       setLoading(false);
     }
-  }, [signal, status]);
+  }, [status]);
 
   useEffect(() => {
     if (!open) return;

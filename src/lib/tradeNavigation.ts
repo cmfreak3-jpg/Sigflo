@@ -1,6 +1,7 @@
 import type { CryptoSignal } from '@/types/signal';
 import type { MarketRowStatus } from '@/types/markets';
-import { symbolToPair } from '@/lib/marketScannerRows';
+import type { PositionItem } from '@/types/integrations';
+import { deriveMarketStatus, symbolToPair } from '@/lib/marketScannerRows';
 import { resolveWatchCue } from '@/lib/watchCue';
 
 export type TradeDeepLinkOptions = {
@@ -33,6 +34,41 @@ export function buildTradeQueryString(signal: CryptoSignal, options?: TradeDeepL
   return qp.toString();
 }
 
+/**
+ * Bots screen → full Trade chart: use the bot’s linked signal when present, otherwise first watched pair.
+ */
+export function buildBotViewChartTradeQuery(
+  bot: { id: string; watchedPairs: string[] },
+  signal: CryptoSignal | null,
+): string {
+  if (signal) {
+    return buildTradeQueryString(signal, { marketStatus: deriveMarketStatus(signal) });
+  }
+  const raw = bot.watchedPairs[0]?.trim() || 'BTC';
+  const linear = raw.toUpperCase().endsWith('USDT') ? raw.toUpperCase() : `${raw.toUpperCase()}USDT`;
+  const pair = symbolToPair(linear);
+  const qp = new URLSearchParams({
+    pair,
+    side: 'long',
+    signal: `bot-chart-${bot.id}`,
+    setupScore: '55',
+    trend: '12',
+    momentum: '12',
+    structure: '12',
+    volume: '8',
+    risk: '8',
+    setupScoreLabel: 'Developing',
+    setupType: 'breakout',
+    tags: 'Breakout',
+    riskTag: 'Medium Risk',
+    explanation: 'Chart opened from your bot — watching this market.',
+    marketStatus: 'developing',
+    biasLabel: 'Bot watch',
+    mode: 'entry',
+  });
+  return qp.toString();
+}
+
 export type PortfolioPositionTradeExtras = {
   /** USDT notional (size × entry) — pre-fills margin slider on Trade. */
   positionUsd?: number;
@@ -42,6 +78,8 @@ export type PortfolioPositionTradeExtras = {
   posSize?: number;
   /** Mark / last for manage-mode PnL display. */
   markPrice?: number;
+  /** Exchange-reported leverage for manage-mode display. */
+  leverage?: number;
   /** From swipe actions on portfolio cards. */
   ticketIntent?: 'close' | 'add';
 };
@@ -95,7 +133,37 @@ export function buildPortfolioPositionTradeQuery(
     if (extras.markPrice != null && Number.isFinite(extras.markPrice) && extras.markPrice > 0) {
       qp.set('markPrice', String(extras.markPrice));
     }
+    if (extras.leverage != null && Number.isFinite(extras.leverage) && extras.leverage > 0) {
+      qp.set('leverage', String(Math.round(extras.leverage)));
+    }
   }
 
   return qp.toString();
+}
+
+/**
+ * `/trade` query for `mode=manage` from a live linear leg (same shape as Portfolio → Trade).
+ * Notional uses `|size| × entry` like portfolio cards, not mark × size.
+ */
+export function buildManageTradeQueryFromLinearPosition(
+  pos: PositionItem,
+  options?: { markPrice?: number; leverageFallback?: number },
+): string {
+  const notional = Math.abs(pos.size * pos.entryPrice);
+  const mark =
+    options?.markPrice ??
+    (pos.markPrice != null && pos.markPrice > 0 ? pos.markPrice : pos.entryPrice);
+  const tradeExtras: PortfolioPositionTradeExtras = {
+    positionUsd: Math.max(1, Math.round(notional)),
+    entryPrice: pos.entryPrice,
+    posSize: pos.size,
+    markPrice: Number.isFinite(mark) && mark > 0 ? mark : undefined,
+    leverage:
+      pos.leverage != null && pos.leverage > 0
+        ? pos.leverage
+        : options?.leverageFallback != null && options.leverageFallback > 0
+          ? Math.round(options.leverageFallback)
+          : undefined,
+  };
+  return buildPortfolioPositionTradeQuery(pos.symbol, pos.side, tradeExtras);
 }

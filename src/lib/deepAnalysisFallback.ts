@@ -33,8 +33,8 @@ function levelHint(signal: CryptoSignal): string {
 function entryState(
   status: MarketRowStatus,
   tradeScore: number,
-): 'Too early' | 'Ready' | 'Too late' | 'Too risky' {
-  if (status === 'overextended' || tradeScore < 45) return 'Too risky';
+): 'Too early' | 'Ready' | 'Too late' | 'Weak timing' {
+  if (status === 'overextended' || tradeScore < 45) return 'Weak timing';
   if (status === 'triggered' && tradeScore >= 65) return 'Ready';
   if (status === 'triggered' && tradeScore < 55) return 'Too late';
   if (status === 'idle') return 'Too early';

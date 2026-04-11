@@ -171,6 +171,8 @@ export type TradeChartScenarioStripManageProps = {
   target: number;
   trendAlignment: number;
   momentumQuality: number;
+  leverage: number;
+  isFutures: boolean;
   exitAiMode?: ExitAiMode;
   exitStrategyPreset?: ExitStrategyPreset;
   automationSafeguards?: AutomationSafeguards;
@@ -792,6 +794,9 @@ function TradeScenarioPanelManage(
         <span className={`font-bold uppercase ${props.side === 'long' ? 'text-emerald-300' : 'text-rose-300'}`}>
           {props.side}
         </span>
+      </ScenarioMetricCell>
+      <ScenarioMetricCell label="Leverage">
+        <span className="tabular-nums">{props.isFutures ? `${props.leverage}×` : '1× spot'}</span>
       </ScenarioMetricCell>
       <ScenarioMetricCell label="Entry">
         <span className="font-semibold tabular-nums">

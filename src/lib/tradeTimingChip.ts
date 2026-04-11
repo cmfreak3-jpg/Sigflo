@@ -41,7 +41,8 @@ export function tradeTimingChipProps(
   if (status === 'overextended' || tradeScore < 45) {
     return {
       state: 'invalid',
-      label: tradeScore < 45 ? 'Too risky' : 'Stretched',
+      /** Not the signal `riskTag` (Low/Medium/High) — this is entry-timing when readiness score is weak. */
+      label: tradeScore < 45 ? 'Weak timing' : 'Stretched',
     };
   }
   if (status === 'triggered' && tradeScore >= 65) return { state: 'ready', label: 'Ready' };

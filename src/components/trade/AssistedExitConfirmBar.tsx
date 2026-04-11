@@ -28,7 +28,9 @@ export function AssistedExitConfirmBar(props: AssistedExitConfirmBarProps) {
           Dismiss — switch Exit AI to Manual
         </button>
       ) : null}
-      <p className="mt-1.5 text-center text-[8px] text-sigflo-muted">Still executes on your exchange — one tap to acknowledge.</p>
+      <p className="mt-1.5 text-center text-[8px] text-sigflo-muted">
+        Sends a market reduce-only (futures) or market sell (spot) order on your connected exchange.
+      </p>
     </div>
   );
 }

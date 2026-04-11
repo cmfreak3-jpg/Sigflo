@@ -723,16 +723,51 @@ export class BybitAdapter implements ExchangeAdapter {
 
   async setLinearLeverage(input: ConnectInput, symbol: string, leverage: number): Promise<void> {
     const lev = Math.min(200, Math.max(1, Math.round(leverage)));
-    await privatePost<Record<string, unknown>>(
-      '/v5/position/set-leverage',
-      {
-        category: 'linear',
-        symbol: symbol.toUpperCase(),
-        buyLeverage: String(lev),
-        sellLeverage: String(lev),
-      },
-      input,
-    );
+    try {
+      await privatePost<Record<string, unknown>>(
+        '/v5/position/set-leverage',
+        {
+          category: 'linear',
+          symbol: symbol.toUpperCase(),
+          buyLeverage: String(lev),
+          sellLeverage: String(lev),
+        },
+        input,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Bybit returns this when leverage is already at the requested value — safe no-op.
+      if (/leverage not modified/i.test(msg)) return;
+      throw e;
+    }
+  }
+
+  /**
+   * Set or clear full-position TP/SL on an open linear perp (`takeProfit` / `stopLoss` use `"0"` to cancel per Bybit).
+   */
+  async setLinearTradingStop(
+    input: ConnectInput,
+    params: {
+      symbol: string;
+      positionIdx: number;
+      takeProfit: string;
+      stopLoss: string;
+    },
+  ): Promise<void> {
+    const sym = params.symbol.toUpperCase();
+    const body: Record<string, unknown> = {
+      category: 'linear',
+      symbol: sym,
+      positionIdx: params.positionIdx,
+      tpslMode: 'Full',
+      tpOrderType: 'Market',
+      slOrderType: 'Market',
+      tpTriggerBy: 'LastPrice',
+      slTriggerBy: 'LastPrice',
+      takeProfit: params.takeProfit.trim(),
+      stopLoss: params.stopLoss.trim(),
+    };
+    await privatePost<Record<string, unknown>>('/v5/position/trading-stop', body, input);
   }
 
   async placeLinearOrder(

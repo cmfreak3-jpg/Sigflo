@@ -209,14 +209,22 @@ export function ScannerInsightCard({
       </ul>
 
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.08] bg-black/35 px-2 py-1.5 ring-1 ring-white/[0.04]">
-        <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted">Readiness</span>
+        <span
+          className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted"
+          title="Entry timing vs trigger — not the same as setup risk tag (Low/Medium/High)"
+        >
+          Entry timing
+        </span>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial">
           <StatusChip
             label={timingChip.state === 'developing' ? 'Building' : timingChip.label}
             state={timingChip.state}
             compact
           />
-          <span className="shrink-0 font-mono text-[9px] font-semibold tabular-nums text-cyan-200/75" title="Trade readiness score">
+          <span
+            className="shrink-0 font-mono text-[9px] font-semibold tabular-nums text-cyan-200/75"
+            title="Trade readiness score (timing/quality for pressing the button — separate from risk tag)"
+          >
             {Math.round(tradeScore)}
           </span>
         </div>
