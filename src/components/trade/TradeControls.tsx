@@ -271,6 +271,15 @@ export function TradeControls(props: TradeControlsProps) {
         </>
       ) : null}
 
+      {!isManageMode ? (
+        <ScannerInsightCard
+          signal={selectedSignal}
+          status={scannerStatus}
+          tradeScore={metrics.riskSummary.tradeScore}
+          groundedContext={groundedAiContext}
+        />
+      ) : null}
+
       <OrderInputsCard
         market={market}
         balanceUsd={metrics.balanceUsd}
@@ -335,15 +344,6 @@ export function TradeControls(props: TradeControlsProps) {
             {manageFuturesTpSl.pending ? 'Updating…' : 'Apply TP / SL on exchange'}
           </button>
         </div>
-      ) : null}
-
-      {!isManageMode ? (
-        <ScannerInsightCard
-          signal={selectedSignal}
-          status={scannerStatus}
-          tradeScore={metrics.riskSummary.tradeScore}
-          groundedContext={groundedAiContext}
-        />
       ) : null}
 
       {!isManageMode ? (
